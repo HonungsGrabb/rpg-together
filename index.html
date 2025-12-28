@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser RPG</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="screen">
+        <div class="auth-container">
+            <h1>⚔️ Browser RPG</h1>
+            <div id="auth-forms">
+                <div id="login-form" class="auth-form">
+                    <h2>Login</h2>
+                    <input type="email" id="login-email" placeholder="Email" autocomplete="email">
+                    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+                    <button id="login-btn">Login</button>
+                    <p>No account? <a href="#" id="show-register">Register</a></p>
+                </div>
+                <div id="register-form" class="auth-form hidden">
+                    <h2>Register</h2>
+                    <input type="text" id="register-username" placeholder="Username" autocomplete="username">
+                    <input type="email" id="register-email" placeholder="Email" autocomplete="email">
+                    <input type="password" id="register-password" placeholder="Password" autocomplete="new-password">
+                    <button id="register-btn">Create Account</button>
+                    <p>Have an account? <a href="#" id="show-login">Login</a></p>
+                </div>
+            </div>
+            <div id="auth-message"></div>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="screen hidden">
+        <header>
+            <div class="player-info">
+                <span id="player-name">Hero</span>
+                <span id="player-level">Lvl 1</span>
+            </div>
+            <button id="logout-btn">Logout</button>
+        </header>
+
+        <main>
+            <div class="stats-panel">
+                <h3>Stats</h3>
+                <div class="stat-bars">
+                    <div class="stat">
+                        <span>HP</span>
+                        <div class="bar hp-bar">
+                            <div id="hp-fill" class="bar-fill"></div>
+                        </div>
+                        <span id="hp-text">100/100</span>
+                    </div>
+                    <div class="stat">
+                        <span>XP</span>
+                        <div class="bar xp-bar">
+                            <div id="xp-fill" class="bar-fill"></div>
+                        </div>
+                        <span id="xp-text">0/100</span>
+                    </div>
+                </div>
+                <div class="stat-numbers">
+                    <p>⚔️ Attack: <span id="stat-attack">10</span></p>
+                    <p>🛡️ Defense: <span id="stat-defense">5</span></p>
+                    <p>💰 Gold: <span id="stat-gold">0</span></p>
+                </div>
+            </div>
+
+            <div class="game-area">
+                <div id="game-log">
+                    <p>Welcome to the adventure!</p>
+                </div>
+                <div class="actions">
+                    <button id="btn-explore">🗺️ Explore</button>
+                    <button id="btn-rest">💤 Rest</button>
+                    <button id="btn-shop">🏪 Shop</button>
+                </div>
+            </div>
+
+            <div class="inventory-panel">
+                <h3>Inventory</h3>
+                <div id="inventory-grid"></div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
