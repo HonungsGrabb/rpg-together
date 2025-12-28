@@ -1,12 +1,12 @@
-import { getEnemyForFloor, scaleEnemy } from './data.js'
+import { getEnemyForFloor, scaleEnemy, getLootDrop } from './data.js'
 
-// Tile types
 export const TILES = {
     FLOOR: 0,
     WALL: 1,
     STAIRS: 2,
     ENEMY: 3,
-    CHEST: 4
+    CHEST: 4,
+    EXIT: 5
 }
 
 export const TILE_DISPLAY = {
@@ -14,25 +14,29 @@ export const TILE_DISPLAY = {
     [TILES.WALL]: { char: '#', class: 'tile-wall' },
     [TILES.STAIRS]: { char: '▼', class: 'tile-stairs' },
     [TILES.ENEMY]: { char: '?', class: 'tile-enemy' },
-    [TILES.CHEST]: { char: '□', class: 'tile-chest' }
+    [TILES.CHEST]: { char: '□', class: 'tile-chest' },
+    [TILES.EXIT]: { char: '▲', class: 'tile-exit' }
 }
 
 export class Dungeon {
-    constructor(width = 15, height = 15) {
+    constructor(width = 17, height = 13) {
         this.width = width
         this.height = height
         this.grid = []
-        this.enemies = new Map() // position -> enemy data
+        this.enemies = new Map()
+        this.chests = new Map()
         this.floor = 1
         this.playerPos = { x: 0, y: 0 }
         this.stairsPos = { x: 0, y: 0 }
-        this.revealed = new Set() // Fog of war - revealed tiles
+        this.exitPos = { x: 0, y: 0 }
+        this.revealed = new Set()
+        this.rooms = []
     }
 
-    // Generate a new floor
     generate(floor) {
         this.floor = floor
         this.enemies.clear()
+        this.chests.clear()
         this.revealed.clear()
         
         // Initialize with walls
@@ -44,37 +48,29 @@ export class Dungeon {
             }
         }
         
-        // Generate rooms and corridors using simple BSP-like approach
         this.generateRooms()
-        
-        // Place player at starting position
         this.placePlayer()
-        
-        // Place stairs down (far from player)
         this.placeStairs()
-        
-        // Place enemies
+        this.placeExit()
         this.placeEnemies(floor)
-        
-        // Reveal area around player
+        this.placeChests(floor)
         this.revealAround(this.playerPos.x, this.playerPos.y)
         
         return this
     }
 
     generateRooms() {
-        const rooms = []
-        const numRooms = 5 + Math.floor(Math.random() * 4) // 5-8 rooms
+        this.rooms = []
+        const numRooms = 5 + Math.floor(Math.random() * 4)
         
         for (let i = 0; i < numRooms; i++) {
-            const roomW = 3 + Math.floor(Math.random() * 4) // 3-6 width
-            const roomH = 3 + Math.floor(Math.random() * 4) // 3-6 height
+            const roomW = 3 + Math.floor(Math.random() * 4)
+            const roomH = 3 + Math.floor(Math.random() * 3)
             const roomX = 1 + Math.floor(Math.random() * (this.width - roomW - 2))
             const roomY = 1 + Math.floor(Math.random() * (this.height - roomH - 2))
             
-            // Check overlap with existing rooms
             let overlaps = false
-            for (const room of rooms) {
+            for (const room of this.rooms) {
                 if (roomX < room.x + room.w + 1 &&
                     roomX + roomW + 1 > room.x &&
                     roomY < room.y + room.h + 1 &&
@@ -85,9 +81,8 @@ export class Dungeon {
             }
             
             if (!overlaps) {
-                rooms.push({ x: roomX, y: roomY, w: roomW, h: roomH })
+                this.rooms.push({ x: roomX, y: roomY, w: roomW, h: roomH })
                 
-                // Carve out room
                 for (let y = roomY; y < roomY + roomH; y++) {
                     for (let x = roomX; x < roomX + roomW; x++) {
                         this.grid[y][x] = TILES.FLOOR
@@ -96,43 +91,32 @@ export class Dungeon {
             }
         }
         
-        // Connect rooms with corridors
-        for (let i = 1; i < rooms.length; i++) {
-            const prev = rooms[i - 1]
-            const curr = rooms[i]
+        // Connect rooms
+        for (let i = 1; i < this.rooms.length; i++) {
+            const prev = this.rooms[i - 1]
+            const curr = this.rooms[i]
             
             const prevCenterX = Math.floor(prev.x + prev.w / 2)
             const prevCenterY = Math.floor(prev.y + prev.h / 2)
             const currCenterX = Math.floor(curr.x + curr.w / 2)
             const currCenterY = Math.floor(curr.y + curr.h / 2)
             
-            // Horizontal then vertical corridor
             if (Math.random() < 0.5) {
-                this.carveHorizontalCorridor(prevCenterX, currCenterX, prevCenterY)
-                this.carveVerticalCorridor(prevCenterY, currCenterY, currCenterX)
+                this.carveCorridor(prevCenterX, currCenterX, prevCenterY, 'h')
+                this.carveCorridor(prevCenterY, currCenterY, currCenterX, 'v')
             } else {
-                this.carveVerticalCorridor(prevCenterY, currCenterY, prevCenterX)
-                this.carveHorizontalCorridor(prevCenterX, currCenterX, currCenterY)
-            }
-        }
-        
-        this.rooms = rooms
-    }
-
-    carveHorizontalCorridor(x1, x2, y) {
-        const start = Math.min(x1, x2)
-        const end = Math.max(x1, x2)
-        for (let x = start; x <= end; x++) {
-            if (y > 0 && y < this.height - 1 && x > 0 && x < this.width - 1) {
-                this.grid[y][x] = TILES.FLOOR
+                this.carveCorridor(prevCenterY, currCenterY, prevCenterX, 'v')
+                this.carveCorridor(prevCenterX, currCenterX, currCenterY, 'h')
             }
         }
     }
 
-    carveVerticalCorridor(y1, y2, x) {
-        const start = Math.min(y1, y2)
-        const end = Math.max(y1, y2)
-        for (let y = start; y <= end; y++) {
+    carveCorridor(from, to, fixed, dir) {
+        const start = Math.min(from, to)
+        const end = Math.max(from, to)
+        for (let i = start; i <= end; i++) {
+            const x = dir === 'h' ? i : fixed
+            const y = dir === 'v' ? i : fixed
             if (y > 0 && y < this.height - 1 && x > 0 && x < this.width - 1) {
                 this.grid[y][x] = TILES.FLOOR
             }
@@ -140,19 +124,28 @@ export class Dungeon {
     }
 
     placePlayer() {
-        // Place in first room
-        if (this.rooms && this.rooms.length > 0) {
+        if (this.rooms.length > 0) {
             const room = this.rooms[0]
             this.playerPos = {
                 x: Math.floor(room.x + room.w / 2),
                 y: Math.floor(room.y + room.h / 2)
             }
-        } else {
-            // Fallback: find any floor tile
-            for (let y = 1; y < this.height - 1; y++) {
-                for (let x = 1; x < this.width - 1; x++) {
-                    if (this.grid[y][x] === TILES.FLOOR) {
-                        this.playerPos = { x, y }
+        }
+    }
+
+    placeExit() {
+        // Exit back to overworld - place near player
+        if (this.rooms.length > 0) {
+            const room = this.rooms[0]
+            // Find a floor tile near entrance
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const x = this.playerPos.x + dx
+                    const y = this.playerPos.y + dy
+                    if (this.grid[y]?.[x] === TILES.FLOOR && 
+                        !(x === this.playerPos.x && y === this.playerPos.y)) {
+                        this.grid[y][x] = TILES.EXIT
+                        this.exitPos = { x, y }
                         return
                     }
                 }
@@ -161,15 +154,13 @@ export class Dungeon {
     }
 
     placeStairs() {
-        // Place in last room (farthest from player)
-        if (this.rooms && this.rooms.length > 1) {
+        if (this.rooms.length > 1) {
             const room = this.rooms[this.rooms.length - 1]
             this.stairsPos = {
                 x: Math.floor(room.x + room.w / 2),
                 y: Math.floor(room.y + room.h / 2)
             }
         } else {
-            // Find floor tile far from player
             let maxDist = 0
             for (let y = 1; y < this.height - 1; y++) {
                 for (let x = 1; x < this.width - 1; x++) {
@@ -183,12 +174,11 @@ export class Dungeon {
                 }
             }
         }
-        
         this.grid[this.stairsPos.y][this.stairsPos.x] = TILES.STAIRS
     }
 
     placeEnemies(floor) {
-        const numEnemies = 3 + Math.floor(floor / 2) + Math.floor(Math.random() * 3)
+        const numEnemies = 4 + Math.floor(floor / 2) + Math.floor(Math.random() * 3)
         let placed = 0
         let attempts = 0
         
@@ -196,7 +186,6 @@ export class Dungeon {
             const x = 1 + Math.floor(Math.random() * (this.width - 2))
             const y = 1 + Math.floor(Math.random() * (this.height - 2))
             
-            // Must be floor, not player start, not stairs
             if (this.grid[y][x] === TILES.FLOOR &&
                 !(x === this.playerPos.x && y === this.playerPos.y) &&
                 !(x === this.stairsPos.x && y === this.stairsPos.y)) {
@@ -214,7 +203,30 @@ export class Dungeon {
         }
     }
 
-    revealAround(x, y, radius = 2) {
+    placeChests(floor) {
+        const numChests = 1 + Math.floor(Math.random() * 2) + Math.floor(floor / 5)
+        let placed = 0
+        let attempts = 0
+        
+        while (placed < numChests && attempts < 50) {
+            const x = 1 + Math.floor(Math.random() * (this.width - 2))
+            const y = 1 + Math.floor(Math.random() * (this.height - 2))
+            
+            if (this.grid[y][x] === TILES.FLOOR) {
+                const key = `${x},${y}`
+                // Generate loot for this chest
+                const loot = getLootDrop(floor, true)
+                if (loot) {
+                    this.chests.set(key, { opened: false, loot })
+                    this.grid[y][x] = TILES.CHEST
+                    placed++
+                }
+            }
+            attempts++
+        }
+    }
+
+    revealAround(x, y, radius = 3) {
         for (let dy = -radius; dy <= radius; dy++) {
             for (let dx = -radius; dx <= radius; dx++) {
                 const nx = x + dx
@@ -248,36 +260,64 @@ export class Dungeon {
         }
     }
 
+    getChest(x, y) {
+        return this.chests.get(`${x},${y}`)
+    }
+
+    openChest(x, y) {
+        const key = `${x},${y}`
+        const chest = this.chests.get(key)
+        if (chest && !chest.opened) {
+            chest.opened = true
+            this.grid[y][x] = TILES.FLOOR
+            return chest.loot
+        }
+        return null
+    }
+
     movePlayer(dx, dy) {
         const newX = this.playerPos.x + dx
         const newY = this.playerPos.y + dy
         
         if (!this.isWalkable(newX, newY)) {
-            return { moved: false, encounter: null }
+            return { moved: false }
         }
         
         const tile = this.getTile(newX, newY)
         
-        // Check for enemy encounter
+        // Enemy encounter
         if (tile === TILES.ENEMY) {
             const enemy = this.getEnemy(newX, newY)
             return { moved: false, encounter: { type: 'enemy', enemy, x: newX, y: newY } }
         }
         
-        // Check for stairs
+        // Chest
+        if (tile === TILES.CHEST) {
+            const loot = this.openChest(newX, newY)
+            this.playerPos = { x: newX, y: newY }
+            this.revealAround(newX, newY)
+            return { moved: true, encounter: { type: 'chest', loot } }
+        }
+        
+        // Stairs down
         if (tile === TILES.STAIRS) {
             this.playerPos = { x: newX, y: newY }
             this.revealAround(newX, newY)
             return { moved: true, encounter: { type: 'stairs' } }
         }
         
+        // Exit to overworld
+        if (tile === TILES.EXIT) {
+            this.playerPos = { x: newX, y: newY }
+            return { moved: true, encounter: { type: 'exit' } }
+        }
+        
         // Normal move
         this.playerPos = { x: newX, y: newY }
         this.revealAround(newX, newY)
-        return { moved: true, encounter: null }
+        return { moved: true }
     }
 
-    // Render grid to HTML
     render(containerId) {
         const container = document.getElementById(containerId)
         if (!container) return
@@ -295,7 +335,6 @@ export class Dungeon {
                 
                 if (!isRevealed) {
                     tileClass += ' tile-hidden'
-                    tileChar = ' '
                 } else {
                     const tile = this.grid[y][x]
                     const display = TILE_DISPLAY[tile]

@@ -1,10 +1,11 @@
 import { supabase } from './supabase-client.js'
-import { RACES, CLASSES, ITEMS, EQUIPMENT_SLOTS, getLootDrop } from './data.js'
+import { RACES, CLASSES, ITEMS, SPELLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_IDS, getLootDrop } from './data.js'
 import { Dungeon } from './dungeon.js'
+import { WorldArea } from './world.js'
 
-// Base stats before race/class bonuses
 const BASE_STATS = {
     hp: 100,
+    mana: 50,
     attack: 5,
     defense: 3,
     speed: 5
@@ -17,9 +18,14 @@ export class Game {
         this.currentSlot = null
         this.player = null
         this.dungeon = null
+        this.world = null
+        this.inDungeon = false
         this.inCombat = false
         this.currentEnemy = null
         this.enemyPosition = null
+        this.combatBuffs = []
+        this.combatDebuffs = []
+        this.enemyDot = null
         this.gameLog = []
     }
 
@@ -29,7 +35,6 @@ export class Game {
     
     async loadSaves(userId) {
         this.userId = userId
-        
         const { data, error } = await supabase
             .from('save_slots')
             .select('*')
@@ -40,7 +45,6 @@ export class Game {
             console.error('Error loading saves:', error)
             return []
         }
-        
         this.saves = data || []
         return this.saves
     }
@@ -49,8 +53,8 @@ export class Game {
         const race = RACES[raceId]
         const cls = CLASSES[classId]
         
-        // Calculate starting stats
         const maxHp = BASE_STATS.hp + race.bonuses.hp + cls.bonuses.hp
+        const maxMana = BASE_STATS.mana + race.bonuses.mana + cls.bonuses.mana
         const startingWeapon = cls.startingWeapon
         
         const playerData = {
@@ -62,27 +66,37 @@ export class Game {
             xpToLevel: 100,
             hp: maxHp,
             maxHp: maxHp,
+            mana: maxMana,
+            maxMana: maxMana,
             baseAttack: BASE_STATS.attack + race.bonuses.attack + cls.bonuses.attack,
             baseDefense: BASE_STATS.defense + race.bonuses.defense + cls.bonuses.defense,
             baseSpeed: BASE_STATS.speed + race.bonuses.speed + cls.bonuses.speed,
-            gold: 0,
-            floor: 1,
+            gold: 50,
+            dungeonFloor: 0,
+            worldX: 0,
+            worldY: 0,
             equipment: {
                 weapon: startingWeapon,
+                offhand: null,
                 helmet: null,
                 chest: null,
                 leggings: null,
-                boots: null
+                boots: null,
+                amulet: null,
+                ring1: null,
+                ring2: null
             },
-            inventory: ['health_potion', 'health_potion'],
+            inventory: ['health_potion', 'health_potion', 'mana_potion'],
+            learnedSpells: [],
             stats: {
                 enemiesKilled: 0,
-                floorsCleared: 0,
-                totalGold: 0
+                dungeonsCleared: 0,
+                floorsExplored: 0,
+                totalGold: 50
             }
         }
         
-        const { data, error } = await supabase
+        const { error } = await supabase
             .from('save_slots')
             .upsert({
                 user_id: this.userId,
@@ -90,8 +104,6 @@ export class Game {
                 player_data: playerData,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'user_id,slot' })
-            .select()
-            .single()
         
         if (error) {
             console.error('Error creating save:', error)
@@ -117,12 +129,18 @@ export class Game {
         this.currentSlot = slot
         this.player = data.player_data
         this.gameLog = []
+        this.inDungeon = false
+        this.inCombat = false
         
-        // Initialize dungeon
-        this.dungeon = new Dungeon(15, 15)
-        this.dungeon.generate(this.player.floor)
+        // Initialize world at castle
+        this.world = new WorldArea(20, 15)
+        this.world.generate(this.player.worldX, this.player.worldY, this.player.level)
         
-        this.log(`Entered floor ${this.player.floor}`)
+        if (this.player.worldX === 0 && this.player.worldY === 0) {
+            this.log('You stand in the castle courtyard. Explore the world to find dungeons!', 'info')
+        } else {
+            this.log(`You are in the ${this.world.biome}.`, 'info')
+        }
         
         return true
     }
@@ -149,7 +167,6 @@ export class Game {
             .eq('user_id', this.userId)
             .eq('slot', slot)
         
-        if (error) console.error('Delete error:', error)
         return !error
     }
 
@@ -157,48 +174,49 @@ export class Game {
     // PLAYER STATS
     // =====================
     
-    getAttack() {
-        let attack = this.player.baseAttack
-        for (const slotId of EQUIPMENT_SLOTS) {
+    getStat(statName) {
+        let value = this.player[`base${statName.charAt(0).toUpperCase() + statName.slice(1)}`] || 0
+        
+        // Add equipment bonuses
+        for (const slotId of EQUIPMENT_SLOT_IDS) {
             const itemId = this.player.equipment[slotId]
-            if (itemId && ITEMS[itemId]?.stats?.attack) {
-                attack += ITEMS[itemId].stats.attack
+            if (itemId && ITEMS[itemId]?.stats?.[statName]) {
+                value += ITEMS[itemId].stats[statName]
             }
         }
-        return attack
-    }
-
-    getDefense() {
-        let defense = this.player.baseDefense
-        for (const slotId of EQUIPMENT_SLOTS) {
-            const itemId = this.player.equipment[slotId]
-            if (itemId && ITEMS[itemId]?.stats?.defense) {
-                defense += ITEMS[itemId].stats.defense
-            }
+        
+        // Add combat buffs
+        for (const buff of this.combatBuffs) {
+            if (buff[statName]) value += buff[statName]
         }
-        return defense
+        
+        return value
     }
 
-    getSpeed() {
-        let speed = this.player.baseSpeed
-        for (const slotId of EQUIPMENT_SLOTS) {
-            const itemId = this.player.equipment[slotId]
-            if (itemId && ITEMS[itemId]?.stats?.speed) {
-                speed += ITEMS[itemId].stats.speed
-            }
-        }
-        return speed
-    }
-
+    getAttack() { return this.getStat('attack') }
+    getDefense() { return this.getStat('defense') }
+    getSpeed() { return this.getStat('speed') }
+    
     getMaxHp() {
         let hp = this.player.maxHp
-        for (const slotId of EQUIPMENT_SLOTS) {
+        for (const slotId of EQUIPMENT_SLOT_IDS) {
             const itemId = this.player.equipment[slotId]
             if (itemId && ITEMS[itemId]?.stats?.hp) {
                 hp += ITEMS[itemId].stats.hp
             }
         }
         return hp
+    }
+
+    getMaxMana() {
+        let mana = this.player.maxMana
+        for (const slotId of EQUIPMENT_SLOT_IDS) {
+            const itemId = this.player.equipment[slotId]
+            if (itemId && ITEMS[itemId]?.stats?.mana) {
+                mana += ITEMS[itemId].stats.mana
+            }
+        }
+        return mana
     }
 
     // =====================
@@ -218,7 +236,15 @@ export class Game {
         const dir = dirs[direction.toLowerCase()]
         if (!dir) return { success: false }
         
-        const result = this.dungeon.movePlayer(dir.dx, dir.dy)
+        if (this.inDungeon) {
+            return this.moveDungeon(dir.dx, dir.dy)
+        } else {
+            return this.moveWorld(dir.dx, dir.dy)
+        }
+    }
+
+    moveDungeon(dx, dy) {
+        const result = this.dungeon.movePlayer(dx, dy)
         
         if (result.encounter) {
             if (result.encounter.type === 'enemy') {
@@ -226,17 +252,73 @@ export class Game {
                 return { success: true, combat: true }
             } else if (result.encounter.type === 'stairs') {
                 return { success: true, stairs: true }
+            } else if (result.encounter.type === 'exit') {
+                return { success: true, exit: true }
+            } else if (result.encounter.type === 'chest') {
+                if (result.encounter.loot) {
+                    if (this.player.inventory.length < 20) {
+                        this.player.inventory.push(result.encounter.loot.id)
+                        this.log(`Opened chest: ${result.encounter.loot.emoji} ${result.encounter.loot.name}!`, 'reward')
+                    } else {
+                        this.log(`Chest contained ${result.encounter.loot.name} but inventory full!`, 'info')
+                    }
+                    this.saveGame()
+                }
+                return { success: true }
             }
         }
         
         return { success: result.moved }
     }
 
-    descend() {
-        this.player.floor++
-        this.player.stats.floorsCleared++
-        this.dungeon.generate(this.player.floor)
-        this.log(`Descended to floor ${this.player.floor}`)
+    moveWorld(dx, dy) {
+        const result = this.world.movePlayer(dx, dy)
+        
+        if (result.transition) {
+            // Move to new area
+            this.player.worldX += result.transition.dx
+            this.player.worldY += result.transition.dy
+            this.world.generate(this.player.worldX, this.player.worldY, this.player.level)
+            this.world.playerPos = { x: result.transition.newX, y: result.transition.newY }
+            this.log(`Entered ${this.world.biome} (${this.player.worldX}, ${this.player.worldY})`, 'info')
+            this.saveGame()
+            return { success: true, newArea: true }
+        }
+        
+        if (result.encounter) {
+            if (result.encounter.type === 'enemy') {
+                this.startCombat(result.encounter.enemy, result.encounter.x, result.encounter.y)
+                return { success: true, combat: true }
+            } else if (result.encounter.type === 'dungeon') {
+                return { success: true, dungeon: true }
+            }
+        }
+        
+        return { success: result.moved }
+    }
+
+    enterDungeon() {
+        this.inDungeon = true
+        this.player.dungeonFloor = 1
+        this.dungeon = new Dungeon(17, 13)
+        this.dungeon.generate(this.player.dungeonFloor)
+        this.log(`Entered dungeon - Floor ${this.player.dungeonFloor}`, 'info')
+        this.saveGame()
+    }
+
+    exitDungeon() {
+        this.inDungeon = false
+        this.player.dungeonFloor = 0
+        this.player.stats.dungeonsCleared++
+        this.log('Exited dungeon, returned to overworld', 'info')
+        this.saveGame()
+    }
+
+    descendDungeon() {
+        this.player.dungeonFloor++
+        this.player.stats.floorsExplored++
+        this.dungeon.generate(this.player.dungeonFloor)
+        this.log(`Descended to floor ${this.player.dungeonFloor}`, 'info')
         this.saveGame()
     }
 
@@ -248,18 +330,24 @@ export class Game {
         this.inCombat = true
         this.currentEnemy = { ...enemy }
         this.enemyPosition = { x, y }
-        this.log(`⚔️ ${enemy.name} attacks!`, 'combat')
+        this.combatBuffs = []
+        this.combatDebuffs = []
+        this.enemyDot = null
+        this.log(`⚔️ ${enemy.emoji} ${enemy.name} attacks!`, 'combat')
     }
 
     playerAttack() {
         if (!this.inCombat || !this.currentEnemy) return null
         
         const playerSpeed = this.getSpeed()
-        const enemySpeed = this.currentEnemy.speed
+        let enemySpeed = this.currentEnemy.speed
         
-        // Determine who goes first
+        // Apply debuffs to enemy
+        for (const debuff of this.combatDebuffs) {
+            if (debuff.speed) enemySpeed += debuff.speed
+        }
+        
         const playerFirst = playerSpeed >= enemySpeed
-        
         let result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false }
         
         if (playerFirst) {
@@ -273,6 +361,22 @@ export class Game {
                 result = this.executePlayerAttack(result)
             }
         }
+        
+        // Process DOT
+        if (this.enemyDot && !result.enemyDefeated) {
+            this.currentEnemy.hp -= this.enemyDot.damage
+            this.log(`Poison deals ${this.enemyDot.damage}!`, 'combat')
+            this.enemyDot.turns--
+            if (this.enemyDot.turns <= 0) this.enemyDot = null
+            if (this.currentEnemy.hp <= 0) {
+                result.enemyDefeated = true
+                this.endCombat(true)
+            }
+        }
+        
+        // Decrement buff/debuff turns
+        this.combatBuffs = this.combatBuffs.filter(b => { b.turns--; return b.turns > 0 })
+        this.combatDebuffs = this.combatDebuffs.filter(d => { d.turns--; return d.turns > 0 })
         
         return result
     }
@@ -301,7 +405,7 @@ export class Game {
         
         this.player.hp -= damage
         result.enemyDamage = damage
-        this.log(`${this.currentEnemy.name} deals ${damage} damage!`, 'combat')
+        this.log(`${this.currentEnemy.name} deals ${damage}!`, 'combat')
         
         if (this.player.hp <= 0) {
             result.playerDefeated = true
@@ -312,22 +416,129 @@ export class Game {
         return result
     }
 
+    castSpell(spellId) {
+        if (!this.inCombat) return null
+        
+        const spell = SPELLS[spellId]
+        if (!spell) return null
+        
+        if (this.player.mana < spell.manaCost) {
+            this.log('Not enough mana!', 'info')
+            return null
+        }
+        
+        this.player.mana -= spell.manaCost
+        this.log(`Cast ${spell.emoji} ${spell.name}!`, 'combat')
+        
+        let result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false }
+        
+        const effect = spell.effect
+        
+        // Damage
+        if (effect.damage) {
+            this.currentEnemy.hp -= effect.damage
+            result.playerDamage = effect.damage
+            this.log(`Deals ${effect.damage} damage!`, 'combat')
+        }
+        
+        // Damage multiplier
+        if (effect.damageMultiplier) {
+            const baseDamage = Math.max(1, this.getAttack() - this.currentEnemy.defense)
+            const damage = Math.floor(baseDamage * effect.damageMultiplier)
+            this.currentEnemy.hp -= damage
+            result.playerDamage = damage
+            this.log(`Deals ${damage} damage!`, 'combat')
+        }
+        
+        // Multi-hit
+        if (effect.hits) {
+            let totalDamage = 0
+            for (let i = 0; i < effect.hits; i++) {
+                const baseDamage = Math.max(1, this.getAttack() - this.currentEnemy.defense)
+                const damage = Math.floor(baseDamage * (effect.damageMultiplier || 1))
+                totalDamage += damage
+            }
+            this.currentEnemy.hp -= totalDamage
+            result.playerDamage = totalDamage
+            this.log(`${effect.hits} hits for ${totalDamage} total!`, 'combat')
+        }
+        
+        // Heal
+        if (effect.heal) {
+            const oldHp = this.player.hp
+            this.player.hp = Math.min(this.getMaxHp(), this.player.hp + effect.heal)
+            this.log(`Healed ${this.player.hp - oldHp} HP!`, 'heal')
+        }
+        
+        // Buff
+        if (effect.buff) {
+            this.combatBuffs.push({ ...effect.buff })
+            this.log(`Gained buff for ${effect.buff.turns} turns!`, 'info')
+        }
+        
+        // Debuff enemy
+        if (effect.debuff) {
+            this.combatDebuffs.push({ ...effect.debuff })
+            this.log(`Enemy debuffed for ${effect.debuff.turns} turns!`, 'info')
+        }
+        
+        // DOT
+        if (effect.dot) {
+            this.enemyDot = { ...effect.dot }
+            this.log(`Applied poison for ${effect.dot.turns} turns!`, 'info')
+        }
+        
+        // Check enemy death
+        if (this.currentEnemy.hp <= 0) {
+            result.enemyDefeated = true
+            this.endCombat(true)
+            return result
+        }
+        
+        // Enemy turn
+        result = this.executeEnemyAttack(result)
+        
+        // Process DOT
+        if (this.enemyDot && !result.enemyDefeated) {
+            this.currentEnemy.hp -= this.enemyDot.damage
+            this.log(`Poison deals ${this.enemyDot.damage}!`, 'combat')
+            this.enemyDot.turns--
+            if (this.enemyDot.turns <= 0) this.enemyDot = null
+            if (this.currentEnemy.hp <= 0) {
+                result.enemyDefeated = true
+                this.endCombat(true)
+            }
+        }
+        
+        // Decrement buffs
+        this.combatBuffs = this.combatBuffs.filter(b => { b.turns--; return b.turns > 0 })
+        this.combatDebuffs = this.combatDebuffs.filter(d => { d.turns--; return d.turns > 0 })
+        
+        return result
+    }
+
     flee() {
         if (!this.inCombat) return false
         
-        const fleeChance = 0.4 + (this.getSpeed() - this.currentEnemy.speed) * 0.05
+        let enemySpeed = this.currentEnemy.speed
+        for (const debuff of this.combatDebuffs) {
+            if (debuff.speed) enemySpeed += debuff.speed
+        }
+        
+        const fleeChance = 0.4 + (this.getSpeed() - enemySpeed) * 0.05
         
         if (Math.random() < fleeChance) {
             this.log('You escaped!', 'info')
             this.inCombat = false
             this.currentEnemy = null
             this.enemyPosition = null
+            this.combatBuffs = []
+            this.combatDebuffs = []
+            this.enemyDot = null
             return true
         } else {
             this.log('Failed to escape!', 'combat')
-            // Enemy gets a free hit
-            const result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false }
-            this.executeEnemyAttack(result)
+            this.executeEnemyAttack({ playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false })
             return false
         }
     }
@@ -336,23 +547,19 @@ export class Game {
         if (victory) {
             const enemy = this.currentEnemy
             
-            // XP
             this.player.xp += enemy.xp
             this.log(`+${enemy.xp} XP`, 'reward')
             
-            // Gold
             this.player.gold += enemy.gold
             this.player.stats.totalGold += enemy.gold
             this.log(`+${enemy.gold} gold`, 'reward')
             
-            // Stats
             this.player.stats.enemiesKilled++
-            
-            // Check level up
             this.checkLevelUp()
             
             // Loot drop
-            const loot = getLootDrop(this.player.floor)
+            const floor = this.inDungeon ? this.player.dungeonFloor : 1
+            const loot = getLootDrop(floor, false)
             if (loot) {
                 if (this.player.inventory.length < 20) {
                     this.player.inventory.push(loot.id)
@@ -362,12 +569,15 @@ export class Game {
                 }
             }
             
-            // Remove enemy from dungeon
-            this.dungeon.removeEnemy(this.enemyPosition.x, this.enemyPosition.y)
-            
-            // Move player to enemy position
-            this.dungeon.playerPos = { ...this.enemyPosition }
-            this.dungeon.revealAround(this.enemyPosition.x, this.enemyPosition.y)
+            // Remove enemy from map
+            if (this.inDungeon) {
+                this.dungeon.removeEnemy(this.enemyPosition.x, this.enemyPosition.y)
+                this.dungeon.playerPos = { ...this.enemyPosition }
+                this.dungeon.revealAround(this.enemyPosition.x, this.enemyPosition.y)
+            } else {
+                this.world.removeEnemy(this.enemyPosition.x, this.enemyPosition.y)
+                this.world.playerPos = { ...this.enemyPosition }
+            }
         } else {
             this.log('💀 You died!', 'death')
         }
@@ -375,6 +585,9 @@ export class Game {
         this.inCombat = false
         this.currentEnemy = null
         this.enemyPosition = null
+        this.combatBuffs = []
+        this.combatDebuffs = []
+        this.enemyDot = null
         this.saveGame()
     }
 
@@ -384,9 +597,10 @@ export class Game {
             this.player.level++
             this.player.xpToLevel = Math.floor(this.player.xpToLevel * 1.5)
             
-            // Stat increases
             this.player.maxHp += 15
+            this.player.maxMana += 10
             this.player.hp = this.getMaxHp()
+            this.player.mana = this.getMaxMana()
             this.player.baseAttack += 2
             this.player.baseDefense += 1
             this.player.baseSpeed += 1
@@ -412,12 +626,56 @@ export class Game {
                 this.player.hp = Math.min(this.getMaxHp(), this.player.hp + item.effect.heal)
                 this.log(`Used ${item.name}, healed ${this.player.hp - oldHp} HP`, 'heal')
             }
+            if (item.effect.restoreMana) {
+                const oldMana = this.player.mana
+                this.player.mana = Math.min(this.getMaxMana(), this.player.mana + item.effect.restoreMana)
+                this.log(`Used ${item.name}, restored ${this.player.mana - oldMana} mana`, 'heal')
+            }
             this.player.inventory.splice(index, 1)
             this.saveGame()
             return true
         }
         
+        if (item.type === 'scroll') {
+            return this.learnSpell(index)
+        }
+        
         return false
+    }
+
+    learnSpell(index) {
+        const itemId = this.player.inventory[index]
+        const item = ITEMS[itemId]
+        if (!item || item.type !== 'scroll') return false
+        
+        const spell = SPELLS[item.spellId]
+        if (!spell) return false
+        
+        // Check level requirement
+        if (this.player.level < spell.levelReq) {
+            this.log(`Need level ${spell.levelReq} to learn this spell`, 'info')
+            return false
+        }
+        
+        // Check class requirement
+        const playerClass = CLASSES[this.player.class]
+        if (spell.class !== 'all' && !playerClass.canLearn.includes(spell.class)) {
+            this.log(`Your class cannot learn this spell`, 'info')
+            return false
+        }
+        
+        // Check if already learned
+        if (this.player.learnedSpells.includes(item.spellId)) {
+            this.log(`Already know ${spell.name}`, 'info')
+            return false
+        }
+        
+        // Learn the spell
+        this.player.learnedSpells.push(item.spellId)
+        this.player.inventory.splice(index, 1)
+        this.log(`Learned ${spell.emoji} ${spell.name}!`, 'reward')
+        this.saveGame()
+        return true
     }
 
     equipItem(index) {
@@ -425,11 +683,20 @@ export class Game {
         if (!itemId) return false
         
         const item = ITEMS[itemId]
-        if (!item || !EQUIPMENT_SLOTS.includes(item.type)) return false
+        if (!item) return false
         
-        // Swap with current equipment
-        const currentEquipped = this.player.equipment[item.type]
-        this.player.equipment[item.type] = itemId
+        // Determine slot
+        let slot = item.type
+        if (item.type === 'ring') {
+            // Use ring1 first, then ring2
+            slot = this.player.equipment.ring1 ? 'ring2' : 'ring1'
+        }
+        
+        if (!EQUIPMENT_SLOT_IDS.includes(slot)) return false
+        
+        // Swap
+        const currentEquipped = this.player.equipment[slot]
+        this.player.equipment[slot] = itemId
         this.player.inventory.splice(index, 1)
         
         if (currentEquipped) {
@@ -475,8 +742,6 @@ export class Game {
     
     log(message, type = '') {
         this.gameLog.push({ message, type, time: Date.now() })
-        if (this.gameLog.length > 100) {
-            this.gameLog.shift()
-        }
+        if (this.gameLog.length > 100) this.gameLog.shift()
     }
 }

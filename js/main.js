@@ -1,127 +1,87 @@
 import { register, login, logout, getSession, onAuthChange } from './auth.js'
 import { Game } from './game.js'
-import { RACES, CLASSES, ITEMS, EQUIPMENT_SLOTS } from './data.js'
+import { RACES, CLASSES, ITEMS, SPELLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_IDS } from './data.js'
 
-// =====================
-// STATE
-// =====================
 const game = new Game()
 let selectedSlot = null
 let selectedRace = null
 let selectedClass = null
-
-// =====================
-// DOM ELEMENTS
-// =====================
-const screens = {
-    auth: document.getElementById('auth-screen'),
-    save: document.getElementById('save-screen'),
-    race: document.getElementById('race-screen'),
-    class: document.getElementById('class-screen'),
-    name: document.getElementById('name-screen'),
-    game: document.getElementById('game-screen')
-}
-
-const overlays = {
-    combat: document.getElementById('combat-overlay'),
-    death: document.getElementById('death-overlay'),
-    stairs: document.getElementById('stairs-overlay'),
-    pause: document.getElementById('pause-overlay')
-}
+let selectedInventoryIndex = null
 
 // =====================
 // SCREEN MANAGEMENT
 // =====================
-function showScreen(screenName) {
-    Object.values(screens).forEach(s => s.classList.add('hidden'))
-    screens[screenName].classList.remove('hidden')
+function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'))
+    document.getElementById(id)?.classList.remove('hidden')
 }
 
-function showOverlay(overlayName) {
-    overlays[overlayName].classList.remove('hidden')
+function showModal(id) {
+    document.getElementById(id)?.classList.remove('hidden')
 }
 
-function hideOverlay(overlayName) {
-    overlays[overlayName].classList.add('hidden')
+function hideModal(id) {
+    document.getElementById(id)?.classList.add('hidden')
 }
 
-function hideAllOverlays() {
-    Object.values(overlays).forEach(o => o.classList.add('hidden'))
+function hideAllModals() {
+    document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'))
 }
 
 // =====================
-// AUTH HANDLERS
+// AUTH
 // =====================
-const loginForm = document.getElementById('login-form')
-const registerForm = document.getElementById('register-form')
-const authMessage = document.getElementById('auth-message')
-
-document.getElementById('show-register').onclick = (e) => {
+document.getElementById('show-register')?.addEventListener('click', e => {
     e.preventDefault()
-    loginForm.classList.add('hidden')
-    registerForm.classList.remove('hidden')
-}
+    document.getElementById('login-form').classList.add('hidden')
+    document.getElementById('register-form').classList.remove('hidden')
+})
 
-document.getElementById('show-login').onclick = (e) => {
+document.getElementById('show-login')?.addEventListener('click', e => {
     e.preventDefault()
-    registerForm.classList.add('hidden')
-    loginForm.classList.remove('hidden')
-}
+    document.getElementById('register-form').classList.add('hidden')
+    document.getElementById('login-form').classList.remove('hidden')
+})
 
-function showAuthMessage(msg, isError = true) {
-    authMessage.textContent = msg
-    authMessage.className = isError ? '' : 'success'
-}
-
-document.getElementById('login-btn').onclick = async () => {
+document.getElementById('login-btn')?.addEventListener('click', async () => {
     const email = document.getElementById('login-email').value
     const password = document.getElementById('login-password').value
-    
-    if (!email || !password) {
-        showAuthMessage('Please fill in all fields')
-        return
-    }
-    
+    if (!email || !password) return showAuthMsg('Fill all fields')
     try {
         await login(email, password)
-    } catch (error) {
-        showAuthMessage(error.message)
+    } catch (e) {
+        showAuthMsg(e.message)
     }
-}
+})
 
-document.getElementById('register-btn').onclick = async () => {
+document.getElementById('register-btn')?.addEventListener('click', async () => {
     const email = document.getElementById('register-email').value
     const password = document.getElementById('register-password').value
-    
-    if (!email || !password) {
-        showAuthMessage('Please fill in all fields')
-        return
-    }
-    
-    if (password.length < 6) {
-        showAuthMessage('Password must be at least 6 characters')
-        return
-    }
-    
+    if (!email || !password) return showAuthMsg('Fill all fields')
+    if (password.length < 6) return showAuthMsg('Password needs 6+ characters')
     try {
         await register(email, password)
-        showAuthMessage('Account created! You can now log in.', false)
-        registerForm.classList.add('hidden')
-        loginForm.classList.remove('hidden')
-    } catch (error) {
-        showAuthMessage(error.message)
+        showAuthMsg('Account created! Login now.', false)
+        document.getElementById('register-form').classList.add('hidden')
+        document.getElementById('login-form').classList.remove('hidden')
+    } catch (e) {
+        showAuthMsg(e.message)
     }
-}
+})
 
-document.getElementById('logout-btn').onclick = async () => {
-    await logout()
+document.getElementById('logout-btn')?.addEventListener('click', logout)
+
+function showAuthMsg(msg, isError = true) {
+    const el = document.getElementById('auth-message')
+    el.textContent = msg
+    el.className = isError ? 'error' : 'success'
 }
 
 // =====================
 // SAVE SCREEN
 // =====================
 async function loadSaveScreen(userId) {
-    showScreen('save')
+    showScreen('save-screen')
     const saves = await game.loadSaves(userId)
     renderSaveSlots(saves)
 }
@@ -139,16 +99,14 @@ function renderSaveSlots(saves) {
             const p = save.player_data
             div.innerHTML = `
                 <div class="save-info">
-                    <h3>${RACES[p.race]?.emoji || ''} ${p.name} - ${CLASSES[p.class]?.name || ''}</h3>
-                    <p>Level ${p.level} · Floor ${p.floor} · ${p.stats?.enemiesKilled || 0} kills</p>
+                    <h3>${RACES[p.race]?.emoji || ''} ${p.name} - Lv.${p.level} ${CLASSES[p.class]?.name || ''}</h3>
+                    <p>Gold: ${p.gold} · Kills: ${p.stats?.enemiesKilled || 0}</p>
                 </div>
-                <button class="delete-btn" data-slot="${slot}">Delete</button>
+                <button class="delete-btn" data-slot="${slot}">✕</button>
             `
-            div.onclick = (e) => {
+            div.onclick = e => {
                 if (e.target.classList.contains('delete-btn')) {
-                    if (confirm('Delete this save?')) {
-                        game.deleteGame(slot).then(() => loadSaveScreen(game.userId))
-                    }
+                    if (confirm('Delete this save?')) game.deleteGame(slot).then(() => loadSaveScreen(game.userId))
                     return
                 }
                 loadExistingGame(slot)
@@ -157,7 +115,6 @@ function renderSaveSlots(saves) {
             div.innerHTML = `<span>[ Empty Slot ${slot} ]</span>`
             div.onclick = () => startNewGame(slot)
         }
-        
         container.appendChild(div)
     }
 }
@@ -170,113 +127,81 @@ function startNewGame(slot) {
 }
 
 async function loadExistingGame(slot) {
-    const success = await game.loadGame(slot)
-    if (success) {
-        showScreen('game')
+    if (await game.loadGame(slot)) {
+        showScreen('game-screen')
         updateGameUI()
-        renderDungeon()
-        setupGameLoop()
+        renderMap()
+        setupInput()
     }
 }
 
 // =====================
-// RACE SELECTION
+// CHARACTER CREATION
 // =====================
 function showRaceScreen() {
-    showScreen('race')
+    showScreen('race-screen')
     const container = document.getElementById('race-options')
     container.innerHTML = ''
     
     for (const race of Object.values(RACES)) {
         const div = document.createElement('div')
         div.className = 'selection-card'
-        
-        const bonusText = Object.entries(race.bonuses)
-            .filter(([_, v]) => v !== 0)
-            .map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${k.toUpperCase()}`)
-            .join(', ')
-        
+        const bonuses = Object.entries(race.bonuses).filter(([_, v]) => v !== 0)
+            .map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${k.toUpperCase()}`).join(', ')
         div.innerHTML = `
             <div class="emoji">${race.emoji}</div>
             <h3>${race.name}</h3>
             <p>${race.description}</p>
-            <div class="bonuses">${bonusText}</div>
+            <div class="bonuses">${bonuses}</div>
         `
-        
-        div.onclick = () => {
-            selectedRace = race.id
-            showClassScreen()
-        }
-        
+        div.onclick = () => { selectedRace = race.id; showClassScreen() }
         container.appendChild(div)
     }
 }
 
-document.getElementById('race-back-btn').onclick = () => showScreen('save')
-
-// =====================
-// CLASS SELECTION
-// =====================
 function showClassScreen() {
-    showScreen('class')
+    showScreen('class-screen')
     const container = document.getElementById('class-options')
     container.innerHTML = ''
     
     for (const cls of Object.values(CLASSES)) {
         const div = document.createElement('div')
         div.className = 'selection-card'
-        
-        const bonusText = Object.entries(cls.bonuses)
-            .filter(([_, v]) => v !== 0)
-            .map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${k.toUpperCase()}`)
-            .join(', ')
-        
+        const bonuses = Object.entries(cls.bonuses).filter(([_, v]) => v !== 0)
+            .map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${k.toUpperCase()}`).join(', ')
         div.innerHTML = `
             <div class="emoji">${cls.emoji}</div>
             <h3>${cls.name}</h3>
             <p>${cls.description}</p>
-            <div class="bonuses">${bonusText}</div>
+            <div class="bonuses">${bonuses}</div>
         `
-        
-        div.onclick = () => {
-            selectedClass = cls.id
-            showNameScreen()
-        }
-        
+        div.onclick = () => { selectedClass = cls.id; showNameScreen() }
         container.appendChild(div)
     }
 }
 
-document.getElementById('class-back-btn').onclick = () => showRaceScreen()
-
-// =====================
-// NAME SCREEN
-// =====================
 function showNameScreen() {
-    showScreen('name')
+    showScreen('name-screen')
     const race = RACES[selectedRace]
     const cls = CLASSES[selectedClass]
-    document.getElementById('name-preview').textContent = 
-        `${race.emoji} ${race.name} ${cls.emoji} ${cls.name}`
+    document.getElementById('name-preview').textContent = `${race.emoji} ${race.name} ${cls.emoji} ${cls.name}`
     document.getElementById('character-name').value = ''
     document.getElementById('character-name').focus()
 }
 
-document.getElementById('name-back-btn').onclick = () => showClassScreen()
+document.getElementById('race-back-btn')?.addEventListener('click', () => showScreen('save-screen'))
+document.getElementById('class-back-btn')?.addEventListener('click', showRaceScreen)
+document.getElementById('name-back-btn')?.addEventListener('click', showClassScreen)
 
-document.getElementById('start-game-btn').onclick = async () => {
+document.getElementById('start-game-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('character-name').value.trim()
-    if (!name) {
-        alert('Please enter a name')
-        return
-    }
-    
+    if (!name) return alert('Enter a name')
     await game.createNewGame(selectedSlot, name, selectedRace, selectedClass)
-    showScreen('game')
+    showScreen('game-screen')
     updateGameUI()
-    renderDungeon()
-    setupGameLoop()
-}
+    renderMap()
+    setupInput()
+})
 
 // =====================
 // GAME UI
@@ -287,15 +212,17 @@ function updateGameUI() {
     
     // Header
     document.getElementById('player-name-display').textContent = p.name
-    document.getElementById('player-class-badge').textContent = CLASSES[p.class]?.name || ''
-    document.getElementById('floor-display').textContent = `Floor ${p.floor}`
+    document.getElementById('player-class-badge').textContent = `${RACES[p.race]?.emoji || ''} ${CLASSES[p.class]?.name || ''}`
+    document.getElementById('floor-display').textContent = game.inDungeon ? `Floor ${p.dungeonFloor}` : `World (${p.worldX}, ${p.worldY})`
     document.getElementById('gold-display').textContent = `💰 ${p.gold}`
     
     // Stats
     const maxHp = game.getMaxHp()
+    const maxMana = game.getMaxMana()
     document.getElementById('hp-bar').style.width = `${(p.hp / maxHp) * 100}%`
     document.getElementById('hp-text').textContent = `${p.hp}/${maxHp}`
-    
+    document.getElementById('mana-bar').style.width = `${(p.mana / maxMana) * 100}%`
+    document.getElementById('mana-text').textContent = `${p.mana}/${maxMana}`
     document.getElementById('xp-bar').style.width = `${(p.xp / p.xpToLevel) * 100}%`
     document.getElementById('xp-text').textContent = `${p.xp}/${p.xpToLevel}`
     
@@ -304,45 +231,107 @@ function updateGameUI() {
     document.getElementById('stat-speed').textContent = game.getSpeed()
     document.getElementById('stat-level').textContent = p.level
     
-    // Equipment
-    renderEquipment()
-    
-    // Inventory
-    renderInventory()
-    
-    // Log
     renderGameLog()
 }
 
-function renderEquipment() {
-    const container = document.getElementById('equipment-slots')
+function renderMap() {
+    if (game.inDungeon && game.dungeon) {
+        game.dungeon.render('map-grid')
+    } else if (game.world) {
+        game.world.render('map-grid')
+    }
+}
+
+function renderGameLog() {
+    const container = document.getElementById('game-log')
+    container.innerHTML = game.gameLog.slice(-15).map(e => `<p class="${e.type}">${e.message}</p>`).join('')
+    container.scrollTop = container.scrollHeight
+}
+
+// =====================
+// EQUIPMENT MODAL
+// =====================
+document.getElementById('btn-equipment')?.addEventListener('click', () => {
+    renderEquipmentModal()
+    showModal('equipment-modal')
+})
+
+document.getElementById('close-equipment')?.addEventListener('click', () => hideModal('equipment-modal'))
+
+function renderEquipmentModal() {
+    const container = document.getElementById('equipment-slots-modal')
     container.innerHTML = ''
     
     for (const slot of EQUIPMENT_SLOTS) {
-        const itemId = game.player.equipment[slot]
+        const itemId = game.player.equipment[slot.id]
         const item = itemId ? ITEMS[itemId] : null
         
         const div = document.createElement('div')
-        div.className = 'equip-slot' + (item ? '' : ' empty')
+        div.className = 'equip-slot-modal' + (item ? '' : ' empty')
         div.innerHTML = `
-            <span class="slot-name">${slot}</span>
-            <span class="item-name">${item ? `${item.emoji} ${item.name}` : '- empty -'}</span>
+            <span class="slot-emoji">${slot.emoji}</span>
+            <span class="slot-name">${slot.name}</span>
+            <span class="item-info">${item ? `${item.emoji} ${item.name}` : '- empty -'}</span>
         `
         
         if (item) {
             div.onclick = () => {
-                game.unequipItem(slot)
-                updateGameUI()
+                showItemDetail(item, slot.id)
             }
-            div.title = 'Click to unequip'
         }
-        
         container.appendChild(div)
     }
 }
 
-function renderInventory() {
-    const container = document.getElementById('inventory-grid')
+// =====================
+// SKILLS MODAL
+// =====================
+document.getElementById('btn-skills')?.addEventListener('click', () => {
+    renderSkillsModal()
+    showModal('skills-modal')
+})
+
+document.getElementById('close-skills')?.addEventListener('click', () => hideModal('skills-modal'))
+
+function renderSkillsModal() {
+    const container = document.getElementById('skills-list')
+    container.innerHTML = ''
+    
+    if (game.player.learnedSpells.length === 0) {
+        container.innerHTML = '<p class="no-skills">No skills learned yet. Find spell scrolls!</p>'
+        return
+    }
+    
+    for (const spellId of game.player.learnedSpells) {
+        const spell = SPELLS[spellId]
+        if (!spell) continue
+        
+        const div = document.createElement('div')
+        div.className = 'skill-card'
+        div.innerHTML = `
+            <span class="skill-emoji">${spell.emoji}</span>
+            <div class="skill-info">
+                <h4>${spell.name}</h4>
+                <p>${spell.description}</p>
+                <span class="skill-cost">Mana: ${spell.manaCost}</span>
+            </div>
+        `
+        container.appendChild(div)
+    }
+}
+
+// =====================
+// INVENTORY MODAL
+// =====================
+document.getElementById('btn-inventory')?.addEventListener('click', () => {
+    renderInventoryModal()
+    showModal('inventory-modal')
+})
+
+document.getElementById('close-inventory')?.addEventListener('click', () => hideModal('inventory-modal'))
+
+function renderInventoryModal() {
+    const container = document.getElementById('inventory-grid-modal')
     container.innerHTML = ''
     
     for (let i = 0; i < 20; i++) {
@@ -354,63 +343,119 @@ function renderInventory() {
         div.textContent = item ? item.emoji : ''
         
         if (item) {
-            div.title = `${item.name}\nClick: Use/Equip\nRight-click: Drop`
-            div.onclick = () => {
-                if (item.type === 'consumable') {
-                    game.useItem(i)
-                } else if (EQUIPMENT_SLOTS.includes(item.type)) {
-                    game.equipItem(i)
-                }
-                updateGameUI()
-                if (game.inCombat) updateCombatUI()
-            }
-            div.oncontextmenu = (e) => {
-                e.preventDefault()
-                if (confirm(`Drop ${item.name}?`)) {
-                    game.dropItem(i)
-                    updateGameUI()
-                }
-            }
+            div.onclick = () => showItemDetail(item, null, i)
         }
-        
         container.appendChild(div)
     }
 }
 
-function renderGameLog() {
-    const container = document.getElementById('game-log')
-    container.innerHTML = game.gameLog
-        .slice(-20)
-        .map(entry => `<p class="${entry.type}">${entry.message}</p>`)
-        .join('')
-    container.scrollTop = container.scrollHeight
-}
-
-function renderDungeon() {
-    if (game.dungeon) {
-        game.dungeon.render('dungeon-grid')
+// =====================
+// ITEM DETAIL MODAL
+// =====================
+function showItemDetail(item, equipSlot = null, invIndex = null) {
+    document.getElementById('item-detail-emoji').textContent = item.emoji
+    document.getElementById('item-detail-name').textContent = item.name
+    document.getElementById('item-detail-type').textContent = item.type
+    document.getElementById('item-detail-desc').textContent = item.description || ''
+    
+    // Stats
+    let statsHtml = ''
+    if (item.stats) {
+        statsHtml = Object.entries(item.stats).map(([k, v]) => 
+            `<span class="stat-bonus">${v > 0 ? '+' : ''}${v} ${k.toUpperCase()}</span>`
+        ).join('')
     }
+    document.getElementById('item-detail-stats').innerHTML = statsHtml
+    
+    // Actions
+    const actions = document.getElementById('item-detail-actions')
+    actions.innerHTML = ''
+    
+    if (equipSlot !== null) {
+        // Viewing equipped item
+        const unequipBtn = document.createElement('button')
+        unequipBtn.textContent = 'Unequip'
+        unequipBtn.onclick = () => {
+            game.unequipItem(equipSlot)
+            hideModal('item-detail-modal')
+            renderEquipmentModal()
+            updateGameUI()
+        }
+        actions.appendChild(unequipBtn)
+    } else if (invIndex !== null) {
+        // Viewing inventory item
+        if (item.type === 'consumable') {
+            const useBtn = document.createElement('button')
+            useBtn.textContent = 'Use'
+            useBtn.onclick = () => {
+                game.useItem(invIndex)
+                hideModal('item-detail-modal')
+                renderInventoryModal()
+                updateGameUI()
+            }
+            actions.appendChild(useBtn)
+        } else if (item.type === 'scroll') {
+            const learnBtn = document.createElement('button')
+            learnBtn.textContent = 'Learn Spell'
+            learnBtn.onclick = () => {
+                game.learnSpell(invIndex)
+                hideModal('item-detail-modal')
+                renderInventoryModal()
+                updateGameUI()
+            }
+            actions.appendChild(learnBtn)
+        } else if (EQUIPMENT_SLOT_IDS.includes(item.type) || item.type === 'ring') {
+            const equipBtn = document.createElement('button')
+            equipBtn.textContent = 'Equip'
+            equipBtn.onclick = () => {
+                game.equipItem(invIndex)
+                hideModal('item-detail-modal')
+                renderInventoryModal()
+                updateGameUI()
+            }
+            actions.appendChild(equipBtn)
+        }
+        
+        const dropBtn = document.createElement('button')
+        dropBtn.className = 'btn-danger'
+        dropBtn.textContent = 'Drop'
+        dropBtn.onclick = () => {
+            if (confirm(`Drop ${item.name}?`)) {
+                game.dropItem(invIndex)
+                hideModal('item-detail-modal')
+                renderInventoryModal()
+                updateGameUI()
+            }
+        }
+        actions.appendChild(dropBtn)
+    }
+    
+    const closeBtn = document.createElement('button')
+    closeBtn.className = 'btn-secondary'
+    closeBtn.textContent = 'Close'
+    closeBtn.onclick = () => hideModal('item-detail-modal')
+    actions.appendChild(closeBtn)
+    
+    showModal('item-detail-modal')
 }
 
 // =====================
-// COMBAT UI
+// COMBAT MODAL
 // =====================
 function showCombatUI() {
     const p = game.player
     const e = game.currentEnemy
     
     document.getElementById('combat-player-name').textContent = p.name
-    document.getElementById('combat-player-hp').style.width = `${(p.hp / game.getMaxHp()) * 100}%`
-    document.getElementById('combat-player-hp-text').textContent = `${p.hp}/${game.getMaxHp()}`
+    updateCombatUI()
     
     document.getElementById('combat-enemy-emoji').textContent = e.emoji
     document.getElementById('combat-enemy-name').textContent = e.name
-    document.getElementById('combat-enemy-hp').style.width = `${(e.hp / e.maxHp) * 100}%`
-    document.getElementById('combat-enemy-hp-text').textContent = `${e.hp}/${e.maxHp}`
     
-    document.getElementById('combat-log').innerHTML = ''
+    renderCombatSpells()
+    document.getElementById('combat-log-modal').innerHTML = ''
     
-    showOverlay('combat')
+    showModal('combat-modal')
 }
 
 function updateCombatUI() {
@@ -418,46 +463,50 @@ function updateCombatUI() {
     const e = game.currentEnemy
     
     document.getElementById('combat-player-hp').style.width = `${(p.hp / game.getMaxHp()) * 100}%`
-    document.getElementById('combat-player-hp-text').textContent = `${p.hp}/${game.getMaxHp()}`
+    document.getElementById('combat-player-hp-text').textContent = `HP: ${p.hp}/${game.getMaxHp()}`
+    document.getElementById('combat-player-mana').style.width = `${(p.mana / game.getMaxMana()) * 100}%`
+    document.getElementById('combat-player-mana-text').textContent = `MP: ${p.mana}/${game.getMaxMana()}`
     
     if (e) {
         document.getElementById('combat-enemy-hp').style.width = `${(e.hp / e.maxHp) * 100}%`
-        document.getElementById('combat-enemy-hp-text').textContent = `${e.hp}/${e.maxHp}`
+        document.getElementById('combat-enemy-hp-text').textContent = `HP: ${e.hp}/${e.maxHp}`
     }
     
-    // Update combat log
-    const log = document.getElementById('combat-log')
-    log.innerHTML = game.gameLog
-        .slice(-5)
-        .map(entry => `<p class="${entry.type}">${entry.message}</p>`)
-        .join('')
+    // Combat log
+    const log = document.getElementById('combat-log-modal')
+    log.innerHTML = game.gameLog.slice(-6).map(e => `<p class="${e.type}">${e.message}</p>`).join('')
     log.scrollTop = log.scrollHeight
 }
 
-document.getElementById('btn-attack').onclick = () => {
-    const result = game.playerAttack()
-    updateCombatUI()
-    updateGameUI()
+function renderCombatSpells() {
+    const container = document.getElementById('combat-spells')
+    container.innerHTML = ''
     
-    if (result?.enemyDefeated) {
-        setTimeout(() => {
-            hideOverlay('combat')
-            renderDungeon()
-        }, 800)
-    } else if (result?.playerDefeated) {
-        setTimeout(() => {
-            hideOverlay('combat')
-            showDeathScreen()
-        }, 800)
+    for (const spellId of game.player.learnedSpells) {
+        const spell = SPELLS[spellId]
+        if (!spell) continue
+        
+        const btn = document.createElement('button')
+        btn.className = 'spell-btn'
+        btn.innerHTML = `${spell.emoji} ${spell.name} <small>(${spell.manaCost})</small>`
+        btn.disabled = game.player.mana < spell.manaCost
+        btn.onclick = () => {
+            const result = game.castSpell(spellId)
+            handleCombatResult(result)
+        }
+        container.appendChild(btn)
     }
 }
 
-document.getElementById('btn-use-potion').onclick = () => {
-    // Find first health potion in inventory
+document.getElementById('btn-attack')?.addEventListener('click', () => {
+    const result = game.playerAttack()
+    handleCombatResult(result)
+})
+
+document.getElementById('btn-use-potion')?.addEventListener('click', () => {
     const potionIndex = game.player.inventory.findIndex(id => 
-        ITEMS[id]?.type === 'consumable' && ITEMS[id]?.effect?.heal
+        ITEMS[id]?.type === 'consumable' && (ITEMS[id]?.effect?.heal || ITEMS[id]?.effect?.restoreMana)
     )
-    
     if (potionIndex >= 0) {
         game.useItem(potionIndex)
         updateCombatUI()
@@ -466,21 +515,41 @@ document.getElementById('btn-use-potion').onclick = () => {
         game.log('No potions!', 'info')
         updateCombatUI()
     }
-}
+})
 
-document.getElementById('btn-flee').onclick = () => {
+document.getElementById('btn-flee')?.addEventListener('click', () => {
     const escaped = game.flee()
     updateCombatUI()
     updateGameUI()
     
     if (escaped) {
         setTimeout(() => {
-            hideOverlay('combat')
-            renderDungeon()
+            hideModal('combat-modal')
+            renderMap()
         }, 500)
     } else if (game.player.hp <= 0) {
         setTimeout(() => {
-            hideOverlay('combat')
+            hideModal('combat-modal')
+            showDeathScreen()
+        }, 800)
+    }
+})
+
+function handleCombatResult(result) {
+    if (!result) return
+    
+    updateCombatUI()
+    updateGameUI()
+    renderCombatSpells()
+    
+    if (result.enemyDefeated) {
+        setTimeout(() => {
+            hideModal('combat-modal')
+            renderMap()
+        }, 800)
+    } else if (result.playerDefeated) {
+        setTimeout(() => {
+            hideModal('combat-modal')
             showDeathScreen()
         }, 800)
     }
@@ -492,71 +561,95 @@ document.getElementById('btn-flee').onclick = () => {
 function showDeathScreen() {
     const p = game.player
     document.getElementById('death-stats').innerHTML = `
-        <p>You reached Floor ${p.floor}</p>
         <p>Level ${p.level} ${RACES[p.race]?.name} ${CLASSES[p.class]?.name}</p>
         <p>Enemies defeated: ${p.stats?.enemiesKilled || 0}</p>
-        <p>Gold collected: ${p.stats?.totalGold || 0}</p>
+        <p>Floors explored: ${p.stats?.floorsExplored || 0}</p>
     `
-    showOverlay('death')
+    showModal('death-modal')
 }
 
-document.getElementById('btn-return-menu').onclick = async () => {
-    // Delete the save
+document.getElementById('btn-return-menu')?.addEventListener('click', async () => {
     await game.deleteGame(game.currentSlot)
-    hideAllOverlays()
+    hideAllModals()
     loadSaveScreen(game.userId)
-}
+})
 
 // =====================
-// STAIRS PROMPT
+// DUNGEON PROMPTS
 // =====================
-function showStairsPrompt() {
-    document.getElementById('next-floor').textContent = game.player.floor + 1
-    showOverlay('stairs')
+function showDungeonPrompt() {
+    showModal('dungeon-prompt-modal')
 }
 
-document.getElementById('btn-descend').onclick = () => {
-    hideOverlay('stairs')
-    game.descend()
+document.getElementById('btn-enter-dungeon')?.addEventListener('click', () => {
+    game.enterDungeon()
+    hideModal('dungeon-prompt-modal')
+    renderMap()
     updateGameUI()
-    renderDungeon()
+})
+
+document.getElementById('btn-stay-outside')?.addEventListener('click', () => {
+    hideModal('dungeon-prompt-modal')
+})
+
+function showStairsPrompt() {
+    document.getElementById('next-floor').textContent = game.player.dungeonFloor + 1
+    showModal('stairs-modal')
 }
 
-document.getElementById('btn-stay').onclick = () => {
-    hideOverlay('stairs')
+document.getElementById('btn-descend')?.addEventListener('click', () => {
+    game.descendDungeon()
+    hideModal('stairs-modal')
+    renderMap()
+    updateGameUI()
+})
+
+document.getElementById('btn-stay')?.addEventListener('click', () => {
+    hideModal('stairs-modal')
+})
+
+function showExitPrompt() {
+    showModal('exit-modal')
 }
+
+document.getElementById('btn-exit-dungeon')?.addEventListener('click', () => {
+    game.exitDungeon()
+    hideModal('exit-modal')
+    renderMap()
+    updateGameUI()
+})
+
+document.getElementById('btn-stay-dungeon')?.addEventListener('click', () => {
+    hideModal('exit-modal')
+})
 
 // =====================
 // PAUSE MENU
 // =====================
-document.getElementById('menu-btn').onclick = () => {
-    showOverlay('pause')
-}
-
-document.getElementById('btn-resume').onclick = () => {
-    hideOverlay('pause')
-}
-
-document.getElementById('btn-save-quit').onclick = async () => {
+document.getElementById('menu-btn')?.addEventListener('click', () => showModal('pause-modal'))
+document.getElementById('btn-resume')?.addEventListener('click', () => hideModal('pause-modal'))
+document.getElementById('btn-save-quit')?.addEventListener('click', async () => {
     await game.saveGame()
-    hideAllOverlays()
+    hideAllModals()
     loadSaveScreen(game.userId)
-}
+})
 
 // =====================
-// GAME LOOP / INPUT
+// INPUT HANDLING
 // =====================
-function setupGameLoop() {
-    // Keyboard input
-    document.onkeydown = (e) => {
-        // Ignore if in overlay (except combat)
-        if (overlays.pause.classList.contains('hidden') === false ||
-            overlays.death.classList.contains('hidden') === false ||
-            overlays.stairs.classList.contains('hidden') === false) {
+function setupInput() {
+    document.onkeydown = e => {
+        // Ignore if modal is open (except combat which handles its own input)
+        const openModals = document.querySelectorAll('.modal:not(.hidden)')
+        const combatOpen = !document.getElementById('combat-modal')?.classList.contains('hidden')
+        
+        if (openModals.length > 0 && !combatOpen) {
+            if (e.key === 'Escape') {
+                hideAllModals()
+            }
             return
         }
         
-        // Ignore if in combat
         if (game.inCombat) return
         
         const key = e.key.toLowerCase()
@@ -574,18 +667,22 @@ function setupGameLoop() {
             
             if (result.combat) {
                 showCombatUI()
+            } else if (result.dungeon) {
+                showDungeonPrompt()
             } else if (result.stairs) {
                 showStairsPrompt()
+            } else if (result.exit) {
+                showExitPrompt()
             }
             
-            renderDungeon()
+            renderMap()
             updateGameUI()
         }
         
-        // ESC for pause
-        if (key === 'escape') {
-            showOverlay('pause')
-        }
+        if (key === 'escape') showModal('pause-modal')
+        if (key === 'e') { renderEquipmentModal(); showModal('equipment-modal') }
+        if (key === 'i') { renderInventoryModal(); showModal('inventory-modal') }
+        if (key === 'k') { renderSkillsModal(); showModal('skills-modal') }
     }
 }
 
@@ -596,17 +693,16 @@ onAuthChange(async (event, session) => {
     if (session?.user) {
         await loadSaveScreen(session.user.id)
     } else {
-        showScreen('auth')
+        showScreen('auth-screen')
     }
 })
 
-// Initial check
 async function init() {
     const session = await getSession()
     if (session?.user) {
         await loadSaveScreen(session.user.id)
     } else {
-        showScreen('auth')
+        showScreen('auth-screen')
     }
 }
 

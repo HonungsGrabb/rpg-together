@@ -3,210 +3,278 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dungeon Depths</title>
+    <title>Realm of Shadows - Roguelike RPG</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <!-- Auth Screen -->
+    <!-- AUTH SCREEN -->
     <div id="auth-screen" class="screen">
         <div class="auth-container">
-            <h1>🏰 Dungeon Depths</h1>
-            <p class="subtitle">An Infinite Roguelike</p>
-            <div id="auth-forms">
-                <div id="login-form" class="auth-form">
-                    <h2>Login</h2>
-                    <input type="email" id="login-email" placeholder="Email" autocomplete="email">
-                    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
-                    <button id="login-btn">Login</button>
-                    <p>No account? <a href="#" id="show-register">Register</a></p>
-                </div>
-                <div id="register-form" class="auth-form hidden">
-                    <h2>Register</h2>
-                    <input type="email" id="register-email" placeholder="Email" autocomplete="email">
-                    <input type="password" id="register-password" placeholder="Password" autocomplete="new-password">
-                    <button id="register-btn">Create Account</button>
-                    <p>Have an account? <a href="#" id="show-login">Login</a></p>
-                </div>
-            </div>
+            <h1>⚔️ Realm of Shadows ⚔️</h1>
+            <p class="subtitle">An Infinite Roguelike Adventure</p>
+            
             <div id="auth-message"></div>
+            
+            <div id="login-form" class="auth-form">
+                <input type="email" id="login-email" placeholder="Email">
+                <input type="password" id="login-password" placeholder="Password">
+                <button id="login-btn" class="btn-primary">Login</button>
+                <p>No account? <a href="#" id="show-register">Register</a></p>
+            </div>
+            
+            <div id="register-form" class="auth-form hidden">
+                <input type="email" id="register-email" placeholder="Email">
+                <input type="password" id="register-password" placeholder="Password (6+ chars)">
+                <button id="register-btn" class="btn-primary">Register</button>
+                <p>Have account? <a href="#" id="show-login">Login</a></p>
+            </div>
         </div>
     </div>
 
-    <!-- Save Select Screen -->
+    <!-- SAVE SCREEN -->
     <div id="save-screen" class="screen hidden">
-        <div class="menu-container">
-            <h1>🏰 Select Save</h1>
+        <div class="save-container">
+            <h1>⚔️ Select Save ⚔️</h1>
             <div id="save-slots"></div>
             <button id="logout-btn" class="btn-secondary">Logout</button>
         </div>
     </div>
 
-    <!-- Character Creation - Race -->
+    <!-- RACE SELECTION -->
     <div id="race-screen" class="screen hidden">
-        <div class="menu-container wide">
-            <h1>Choose Your Race</h1>
+        <div class="selection-container">
+            <h2>Choose Your Race</h2>
             <div id="race-options" class="selection-grid"></div>
             <button id="race-back-btn" class="btn-secondary">Back</button>
         </div>
     </div>
 
-    <!-- Character Creation - Class -->
+    <!-- CLASS SELECTION -->
     <div id="class-screen" class="screen hidden">
-        <div class="menu-container wide">
-            <h1>Choose Your Class</h1>
+        <div class="selection-container">
+            <h2>Choose Your Class</h2>
             <div id="class-options" class="selection-grid"></div>
             <button id="class-back-btn" class="btn-secondary">Back</button>
         </div>
     </div>
 
-    <!-- Character Creation - Name -->
+    <!-- NAME INPUT -->
     <div id="name-screen" class="screen hidden">
-        <div class="menu-container">
-            <h1>Name Your Hero</h1>
-            <div id="name-preview"></div>
+        <div class="name-container">
+            <h2>Name Your Character</h2>
+            <p id="name-preview"></p>
             <input type="text" id="character-name" placeholder="Enter name..." maxlength="20">
-            <button id="start-game-btn">Begin Adventure</button>
-            <button id="name-back-btn" class="btn-secondary">Back</button>
+            <div class="name-buttons">
+                <button id="name-back-btn" class="btn-secondary">Back</button>
+                <button id="start-game-btn" class="btn-primary">Begin Adventure</button>
+            </div>
         </div>
     </div>
 
-    <!-- Game Screen -->
+    <!-- GAME SCREEN -->
     <div id="game-screen" class="screen hidden">
         <header class="game-header">
             <div class="header-left">
-                <span id="player-name-display">Hero</span>
-                <span id="player-class-badge">Warrior</span>
-                <span id="floor-display">Floor 1</span>
+                <span id="player-name-display"></span>
+                <span id="player-class-badge"></span>
+            </div>
+            <div class="header-center">
+                <span id="floor-display"></span>
             </div>
             <div class="header-right">
-                <span id="gold-display">💰 0</span>
+                <span id="gold-display"></span>
                 <button id="menu-btn">☰</button>
             </div>
         </header>
 
         <main class="game-main">
-            <!-- Left Panel - Stats & Equipment -->
-            <aside class="panel panel-left">
-                <div class="stats-section">
-                    <h3>Stats</h3>
-                    <div class="stat-bar">
-                        <span class="stat-label">HP</span>
-                        <div class="bar">
-                            <div id="hp-bar" class="bar-fill hp"></div>
-                        </div>
-                        <span id="hp-text" class="stat-value">100/100</span>
-                    </div>
-                    <div class="stat-bar">
-                        <span class="stat-label">XP</span>
-                        <div class="bar">
-                            <div id="xp-bar" class="bar-fill xp"></div>
-                        </div>
-                        <span id="xp-text" class="stat-value">0/100</span>
-                    </div>
-                    <div class="stat-numbers">
-                        <div class="stat-row">
-                            <span>⚔️ ATK</span>
-                            <span id="stat-attack">10</span>
-                        </div>
-                        <div class="stat-row">
-                            <span>🛡️ DEF</span>
-                            <span id="stat-defense">5</span>
-                        </div>
-                        <div class="stat-row">
-                            <span>💨 SPD</span>
-                            <span id="stat-speed">5</span>
-                        </div>
-                        <div class="stat-row">
-                            <span>📊 LVL</span>
-                            <span id="stat-level">1</span>
-                        </div>
-                    </div>
+            <section class="stats-panel">
+                <div class="stat-bar hp">
+                    <label>HP</label>
+                    <div class="bar"><div id="hp-bar" class="fill hp-fill"></div></div>
+                    <span id="hp-text"></span>
+                </div>
+                <div class="stat-bar mana">
+                    <label>MP</label>
+                    <div class="bar"><div id="mana-bar" class="fill mana-fill"></div></div>
+                    <span id="mana-text"></span>
+                </div>
+                <div class="stat-bar xp">
+                    <label>XP</label>
+                    <div class="bar"><div id="xp-bar" class="fill xp-fill"></div></div>
+                    <span id="xp-text"></span>
                 </div>
                 
-                <div class="equipment-section">
-                    <h3>Equipment</h3>
-                    <div id="equipment-slots"></div>
+                <div class="stats-grid">
+                    <div class="stat">⚔️ <span id="stat-attack">0</span></div>
+                    <div class="stat">🛡️ <span id="stat-defense">0</span></div>
+                    <div class="stat">💨 <span id="stat-speed">0</span></div>
+                    <div class="stat">⭐ Lv.<span id="stat-level">1</span></div>
                 </div>
-            </aside>
 
-            <!-- Center - Dungeon Grid -->
-            <section class="panel panel-center">
-                <div id="dungeon-container">
-                    <div id="dungeon-grid"></div>
-                </div>
-                <div id="game-log"></div>
-                <div class="controls-hint">
-                    <span>WASD to move</span>
-                    <span>Walk into enemies to fight</span>
+                <div class="action-buttons">
+                    <button id="btn-equipment" class="action-btn">🎽 Equipment</button>
+                    <button id="btn-skills" class="action-btn">✨ Skills</button>
+                    <button id="btn-inventory" class="action-btn">🎒 Inventory</button>
                 </div>
             </section>
 
-            <!-- Right Panel - Inventory -->
-            <aside class="panel panel-right">
-                <h3>Inventory</h3>
-                <div id="inventory-grid"></div>
-            </aside>
+            <section class="map-section">
+                <div id="map-grid" class="map-grid"></div>
+                <div class="controls-hint">
+                    <span>WASD / Arrow Keys to move</span>
+                </div>
+            </section>
+
+            <section class="log-panel">
+                <h3>📜 Log</h3>
+                <div id="game-log"></div>
+            </section>
         </main>
+    </div>
 
-        <!-- Combat Overlay -->
-        <div id="combat-overlay" class="overlay hidden">
-            <div class="combat-container">
-                <div class="combat-header">⚔️ COMBAT ⚔️</div>
-                <div class="combatants">
-                    <div class="combatant player-side">
-                        <div id="combat-player-name">Hero</div>
-                        <div class="combat-hp-bar">
-                            <div id="combat-player-hp" class="bar-fill hp"></div>
-                        </div>
-                        <div id="combat-player-hp-text">100/100</div>
+    <!-- EQUIPMENT MODAL -->
+    <div id="equipment-modal" class="modal hidden">
+        <div class="modal-content equipment-content">
+            <div class="modal-header">
+                <h2>🎽 Equipment</h2>
+                <button id="close-equipment" class="close-btn">✕</button>
+            </div>
+            <div id="equipment-slots-modal" class="equipment-grid"></div>
+        </div>
+    </div>
+
+    <!-- SKILLS MODAL -->
+    <div id="skills-modal" class="modal hidden">
+        <div class="modal-content skills-content">
+            <div class="modal-header">
+                <h2>✨ Skills</h2>
+                <button id="close-skills" class="close-btn">✕</button>
+            </div>
+            <div id="skills-list" class="skills-grid"></div>
+        </div>
+    </div>
+
+    <!-- INVENTORY MODAL -->
+    <div id="inventory-modal" class="modal hidden">
+        <div class="modal-content inventory-content">
+            <div class="modal-header">
+                <h2>🎒 Inventory</h2>
+                <button id="close-inventory" class="close-btn">✕</button>
+            </div>
+            <div id="inventory-grid-modal" class="inventory-grid"></div>
+        </div>
+    </div>
+
+    <!-- ITEM DETAIL MODAL -->
+    <div id="item-detail-modal" class="modal hidden">
+        <div class="modal-content item-detail-content">
+            <div class="item-detail-header">
+                <span id="item-detail-emoji" class="item-emoji"></span>
+                <div>
+                    <h3 id="item-detail-name"></h3>
+                    <span id="item-detail-type" class="item-type"></span>
+                </div>
+            </div>
+            <p id="item-detail-desc"></p>
+            <div id="item-detail-stats" class="item-stats"></div>
+            <div id="item-detail-actions" class="item-actions"></div>
+        </div>
+    </div>
+
+    <!-- COMBAT MODAL -->
+    <div id="combat-modal" class="modal hidden">
+        <div class="modal-content combat-content">
+            <h2>⚔️ Combat!</h2>
+            
+            <div class="combat-arena">
+                <div class="combatant player-side">
+                    <h3 id="combat-player-name">Player</h3>
+                    <div class="combat-bar">
+                        <div id="combat-player-hp" class="fill hp-fill"></div>
                     </div>
-                    <div class="vs">VS</div>
-                    <div class="combatant enemy-side">
-                        <div id="combat-enemy-emoji" class="enemy-emoji">👹</div>
-                        <div id="combat-enemy-name">Enemy</div>
-                        <div class="combat-hp-bar">
-                            <div id="combat-enemy-hp" class="bar-fill enemy"></div>
-                        </div>
-                        <div id="combat-enemy-hp-text">50/50</div>
+                    <span id="combat-player-hp-text"></span>
+                    <div class="combat-bar mana-combat-bar">
+                        <div id="combat-player-mana" class="fill mana-fill"></div>
                     </div>
+                    <span id="combat-player-mana-text"></span>
                 </div>
-                <div id="combat-log"></div>
-                <div class="combat-actions">
-                    <button id="btn-attack">⚔️ Attack</button>
-                    <button id="btn-use-potion">🧪 Potion</button>
-                    <button id="btn-flee">🏃 Flee</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Death Overlay -->
-        <div id="death-overlay" class="overlay hidden">
-            <div class="death-container">
-                <h1>💀 YOU DIED 💀</h1>
-                <div id="death-stats"></div>
-                <button id="btn-return-menu">Return to Menu</button>
-            </div>
-        </div>
-
-        <!-- Stairs Prompt -->
-        <div id="stairs-overlay" class="overlay hidden">
-            <div class="stairs-container">
-                <h2>▼ Stairs Found ▼</h2>
-                <p>Descend to floor <span id="next-floor">2</span>?</p>
-                <div class="stairs-actions">
-                    <button id="btn-descend">Descend</button>
-                    <button id="btn-stay" class="btn-secondary">Stay</button>
+                
+                <div class="vs">VS</div>
+                
+                <div class="combatant enemy-side">
+                    <span id="combat-enemy-emoji" class="enemy-emoji"></span>
+                    <h3 id="combat-enemy-name">Enemy</h3>
+                    <div class="combat-bar">
+                        <div id="combat-enemy-hp" class="fill enemy-fill"></div>
+                    </div>
+                    <span id="combat-enemy-hp-text"></span>
                 </div>
             </div>
-        </div>
-
-        <!-- Pause Menu -->
-        <div id="pause-overlay" class="overlay hidden">
-            <div class="pause-container">
-                <h2>Paused</h2>
-                <button id="btn-resume">Resume</button>
-                <button id="btn-save-quit">Save & Quit</button>
+            
+            <div id="combat-log-modal" class="combat-log"></div>
+            
+            <div id="combat-spells" class="combat-spells"></div>
+            
+            <div class="combat-actions">
+                <button id="btn-attack" class="btn-primary">⚔️ Attack</button>
+                <button id="btn-use-potion" class="btn-secondary">🧪 Use Potion</button>
+                <button id="btn-flee" class="btn-danger">💨 Flee</button>
             </div>
+        </div>
+    </div>
+
+    <!-- DEATH MODAL -->
+    <div id="death-modal" class="modal hidden">
+        <div class="modal-content death-content">
+            <h2>💀 You Died</h2>
+            <div id="death-stats"></div>
+            <button id="btn-return-menu" class="btn-primary">Return to Menu</button>
+        </div>
+    </div>
+
+    <!-- DUNGEON ENTRANCE PROMPT -->
+    <div id="dungeon-prompt-modal" class="modal hidden">
+        <div class="modal-content prompt-content">
+            <h2>🏚️ Dungeon Entrance</h2>
+            <p>A dark passage leads underground. Enter?</p>
+            <div class="prompt-buttons">
+                <button id="btn-enter-dungeon" class="btn-primary">Enter Dungeon</button>
+                <button id="btn-stay-outside" class="btn-secondary">Stay Outside</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- STAIRS PROMPT -->
+    <div id="stairs-modal" class="modal hidden">
+        <div class="modal-content prompt-content">
+            <h2>🪜 Stairs Down</h2>
+            <p>Descend to floor <span id="next-floor">2</span>?</p>
+            <div class="prompt-buttons">
+                <button id="btn-descend" class="btn-primary">Descend</button>
+                <button id="btn-stay" class="btn-secondary">Stay</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXIT PROMPT -->
+    <div id="exit-modal" class="modal hidden">
+        <div class="modal-content prompt-content">
+            <h2>🚪 Dungeon Exit</h2>
+            <p>Return to the surface?</p>
+            <div class="prompt-buttons">
+                <button id="btn-exit-dungeon" class="btn-primary">Exit Dungeon</button>
+                <button id="btn-stay-dungeon" class="btn-secondary">Stay</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAUSE MODAL -->
+    <div id="pause-modal" class="modal hidden">
+        <div class="modal-content pause-content">
+            <h2>⏸️ Paused</h2>
+            <button id="btn-resume" class="btn-primary">Resume</button>
+            <button id="btn-save-quit" class="btn-secondary">Save & Quit</button>
         </div>
     </div>
 
