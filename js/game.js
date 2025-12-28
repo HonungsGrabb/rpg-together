@@ -1,301 +1,482 @@
 import { supabase } from './supabase-client.js'
+import { RACES, CLASSES, ITEMS, EQUIPMENT_SLOTS, getLootDrop } from './data.js'
+import { Dungeon } from './dungeon.js'
 
-// Default player state
-const DEFAULT_PLAYER = {
-    level: 1,
+// Base stats before race/class bonuses
+const BASE_STATS = {
     hp: 100,
-    max_hp: 100,
-    xp: 0,
-    xp_to_level: 100,
-    attack: 10,
-    defense: 5,
-    gold: 0,
-    inventory: []
+    attack: 5,
+    defense: 3,
+    speed: 5
 }
-
-// Enemies by difficulty
-const ENEMIES = [
-    { name: 'Slime', hp: 20, attack: 5, xp: 15, gold: 5 },
-    { name: 'Goblin', hp: 35, attack: 8, xp: 25, gold: 10 },
-    { name: 'Wolf', hp: 45, attack: 12, xp: 35, gold: 15 },
-    { name: 'Orc', hp: 70, attack: 18, xp: 50, gold: 25 },
-    { name: 'Dark Knight', hp: 100, attack: 25, xp: 80, gold: 50 }
-]
-
-// Items
-const ITEMS = [
-    { id: 'potion', name: 'Health Potion', emoji: '🧪', effect: 'heal', value: 30, price: 20 },
-    { id: 'sword', name: 'Iron Sword', emoji: '🗡️', effect: 'attack', value: 5, price: 50 },
-    { id: 'shield', name: 'Wooden Shield', emoji: '🛡️', effect: 'defense', value: 3, price: 40 }
-]
 
 export class Game {
     constructor() {
-        this.player = { ...DEFAULT_PLAYER }
         this.userId = null
-        this.username = 'Hero'
-        this.saveTimeout = null
+        this.saves = []
+        this.currentSlot = null
+        this.player = null
+        this.dungeon = null
+        this.inCombat = false
+        this.currentEnemy = null
+        this.enemyPosition = null
+        this.gameLog = []
     }
 
-    // Initialize game for user
-    async init(user) {
-        this.userId = user.id
-        this.username = user.user_metadata?.username || user.email.split('@')[0]
-        await this.load()
-        this.updateUI()
-    }
-
-    // Load player data from Supabase
-    async load() {
+    // =====================
+    // SAVE MANAGEMENT
+    // =====================
+    
+    async loadSaves(userId) {
+        this.userId = userId
+        
         const { data, error } = await supabase
-            .from('players')
+            .from('save_slots')
+            .select('*')
+            .eq('user_id', userId)
+            .order('slot', { ascending: true })
+        
+        if (error) {
+            console.error('Error loading saves:', error)
+            return []
+        }
+        
+        this.saves = data || []
+        return this.saves
+    }
+
+    async createNewGame(slot, name, raceId, classId) {
+        const race = RACES[raceId]
+        const cls = CLASSES[classId]
+        
+        // Calculate starting stats
+        const maxHp = BASE_STATS.hp + race.bonuses.hp + cls.bonuses.hp
+        const startingWeapon = cls.startingWeapon
+        
+        const playerData = {
+            name,
+            race: raceId,
+            class: classId,
+            level: 1,
+            xp: 0,
+            xpToLevel: 100,
+            hp: maxHp,
+            maxHp: maxHp,
+            baseAttack: BASE_STATS.attack + race.bonuses.attack + cls.bonuses.attack,
+            baseDefense: BASE_STATS.defense + race.bonuses.defense + cls.bonuses.defense,
+            baseSpeed: BASE_STATS.speed + race.bonuses.speed + cls.bonuses.speed,
+            gold: 0,
+            floor: 1,
+            equipment: {
+                weapon: startingWeapon,
+                helmet: null,
+                chest: null,
+                leggings: null,
+                boots: null
+            },
+            inventory: ['health_potion', 'health_potion'],
+            stats: {
+                enemiesKilled: 0,
+                floorsCleared: 0,
+                totalGold: 0
+            }
+        }
+        
+        const { data, error } = await supabase
+            .from('save_slots')
+            .upsert({
+                user_id: this.userId,
+                slot: slot,
+                player_data: playerData,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id,slot' })
+            .select()
+            .single()
+        
+        if (error) {
+            console.error('Error creating save:', error)
+            return null
+        }
+        
+        return this.loadGame(slot)
+    }
+
+    async loadGame(slot) {
+        const { data, error } = await supabase
+            .from('save_slots')
             .select('*')
             .eq('user_id', this.userId)
+            .eq('slot', slot)
             .single()
-
-        if (error && error.code !== 'PGRST116') {
-            console.error('Load error:', error)
-            return
+        
+        if (error || !data) {
+            console.error('Error loading game:', error)
+            return false
         }
+        
+        this.currentSlot = slot
+        this.player = data.player_data
+        this.gameLog = []
+        
+        // Initialize dungeon
+        this.dungeon = new Dungeon(15, 15)
+        this.dungeon.generate(this.player.floor)
+        
+        this.log(`Entered floor ${this.player.floor}`)
+        
+        return true
+    }
 
-        if (data) {
-            this.player = {
-                level: data.level,
-                hp: data.hp,
-                max_hp: data.max_hp,
-                xp: data.xp,
-                xp_to_level: data.xp_to_level,
-                attack: data.attack,
-                defense: data.defense,
-                gold: data.gold,
-                inventory: data.inventory || []
+    async saveGame() {
+        if (!this.currentSlot || !this.player) return
+        
+        const { error } = await supabase
+            .from('save_slots')
+            .update({
+                player_data: this.player,
+                updated_at: new Date().toISOString()
+            })
+            .eq('user_id', this.userId)
+            .eq('slot', this.currentSlot)
+        
+        if (error) console.error('Save error:', error)
+    }
+
+    async deleteGame(slot) {
+        const { error } = await supabase
+            .from('save_slots')
+            .delete()
+            .eq('user_id', this.userId)
+            .eq('slot', slot)
+        
+        if (error) console.error('Delete error:', error)
+        return !error
+    }
+
+    // =====================
+    // PLAYER STATS
+    // =====================
+    
+    getAttack() {
+        let attack = this.player.baseAttack
+        for (const slotId of EQUIPMENT_SLOTS) {
+            const itemId = this.player.equipment[slotId]
+            if (itemId && ITEMS[itemId]?.stats?.attack) {
+                attack += ITEMS[itemId].stats.attack
+            }
+        }
+        return attack
+    }
+
+    getDefense() {
+        let defense = this.player.baseDefense
+        for (const slotId of EQUIPMENT_SLOTS) {
+            const itemId = this.player.equipment[slotId]
+            if (itemId && ITEMS[itemId]?.stats?.defense) {
+                defense += ITEMS[itemId].stats.defense
+            }
+        }
+        return defense
+    }
+
+    getSpeed() {
+        let speed = this.player.baseSpeed
+        for (const slotId of EQUIPMENT_SLOTS) {
+            const itemId = this.player.equipment[slotId]
+            if (itemId && ITEMS[itemId]?.stats?.speed) {
+                speed += ITEMS[itemId].stats.speed
+            }
+        }
+        return speed
+    }
+
+    getMaxHp() {
+        let hp = this.player.maxHp
+        for (const slotId of EQUIPMENT_SLOTS) {
+            const itemId = this.player.equipment[slotId]
+            if (itemId && ITEMS[itemId]?.stats?.hp) {
+                hp += ITEMS[itemId].stats.hp
+            }
+        }
+        return hp
+    }
+
+    // =====================
+    // MOVEMENT
+    // =====================
+    
+    move(direction) {
+        if (this.inCombat) return { success: false, message: 'In combat!' }
+        
+        const dirs = {
+            'w': { dx: 0, dy: -1 },
+            'a': { dx: -1, dy: 0 },
+            's': { dx: 0, dy: 1 },
+            'd': { dx: 1, dy: 0 }
+        }
+        
+        const dir = dirs[direction.toLowerCase()]
+        if (!dir) return { success: false }
+        
+        const result = this.dungeon.movePlayer(dir.dx, dir.dy)
+        
+        if (result.encounter) {
+            if (result.encounter.type === 'enemy') {
+                this.startCombat(result.encounter.enemy, result.encounter.x, result.encounter.y)
+                return { success: true, combat: true }
+            } else if (result.encounter.type === 'stairs') {
+                return { success: true, stairs: true }
+            }
+        }
+        
+        return { success: result.moved }
+    }
+
+    descend() {
+        this.player.floor++
+        this.player.stats.floorsCleared++
+        this.dungeon.generate(this.player.floor)
+        this.log(`Descended to floor ${this.player.floor}`)
+        this.saveGame()
+    }
+
+    // =====================
+    // COMBAT
+    // =====================
+    
+    startCombat(enemy, x, y) {
+        this.inCombat = true
+        this.currentEnemy = { ...enemy }
+        this.enemyPosition = { x, y }
+        this.log(`⚔️ ${enemy.name} attacks!`, 'combat')
+    }
+
+    playerAttack() {
+        if (!this.inCombat || !this.currentEnemy) return null
+        
+        const playerSpeed = this.getSpeed()
+        const enemySpeed = this.currentEnemy.speed
+        
+        // Determine who goes first
+        const playerFirst = playerSpeed >= enemySpeed
+        
+        let result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false }
+        
+        if (playerFirst) {
+            result = this.executePlayerAttack(result)
+            if (!result.enemyDefeated) {
+                result = this.executeEnemyAttack(result)
             }
         } else {
-            // Create new player record
-            await this.save()
-        }
-    }
-
-    // Save player data to Supabase (debounced)
-    async save() {
-        if (this.saveTimeout) clearTimeout(this.saveTimeout)
-        
-        this.saveTimeout = setTimeout(async () => {
-            const { error } = await supabase
-                .from('players')
-                .upsert({
-                    user_id: this.userId,
-                    username: this.username,
-                    ...this.player,
-                    updated_at: new Date().toISOString()
-                }, {
-                    onConflict: 'user_id'
-                })
-
-            if (error) console.error('Save error:', error)
-        }, 1000)
-    }
-
-    // Update all UI elements
-    updateUI() {
-        document.getElementById('player-name').textContent = this.username
-        document.getElementById('player-level').textContent = `Lvl ${this.player.level}`
-        
-        // HP bar
-        const hpPercent = (this.player.hp / this.player.max_hp) * 100
-        document.getElementById('hp-fill').style.width = `${hpPercent}%`
-        document.getElementById('hp-text').textContent = `${this.player.hp}/${this.player.max_hp}`
-        
-        // XP bar
-        const xpPercent = (this.player.xp / this.player.xp_to_level) * 100
-        document.getElementById('xp-fill').style.width = `${xpPercent}%`
-        document.getElementById('xp-text').textContent = `${this.player.xp}/${this.player.xp_to_level}`
-        
-        // Stats
-        document.getElementById('stat-attack').textContent = this.player.attack
-        document.getElementById('stat-defense').textContent = this.player.defense
-        document.getElementById('stat-gold').textContent = this.player.gold
-        
-        // Inventory
-        this.updateInventory()
-    }
-
-    updateInventory() {
-        const grid = document.getElementById('inventory-grid')
-        grid.innerHTML = ''
-        
-        // Show 9 slots
-        for (let i = 0; i < 9; i++) {
-            const slot = document.createElement('div')
-            slot.className = 'inventory-slot'
-            
-            if (this.player.inventory[i]) {
-                const item = ITEMS.find(it => it.id === this.player.inventory[i])
-                if (item) {
-                    slot.textContent = item.emoji
-                    slot.title = item.name
-                    slot.onclick = () => this.useItem(i)
-                }
-            } else {
-                slot.classList.add('empty')
+            result = this.executeEnemyAttack(result)
+            if (!result.playerDefeated) {
+                result = this.executePlayerAttack(result)
             }
-            
-            grid.appendChild(slot)
         }
-    }
-
-    // Log message to game area
-    log(message, type = '') {
-        const log = document.getElementById('game-log')
-        const p = document.createElement('p')
-        p.textContent = message
-        if (type) p.className = type
-        log.appendChild(p)
-        log.scrollTop = log.scrollHeight
         
-        // Keep last 50 messages
-        while (log.children.length > 50) {
-            log.removeChild(log.firstChild)
-        }
+        return result
     }
 
-    // Explore action - random encounter
-    explore() {
+    executePlayerAttack(result) {
+        const attack = this.getAttack()
+        const defense = this.currentEnemy.defense
+        const damage = Math.max(1, attack - defense + Math.floor(Math.random() * 5) - 2)
+        
+        this.currentEnemy.hp -= damage
+        result.playerDamage = damage
+        this.log(`You deal ${damage} damage!`, 'combat')
+        
+        if (this.currentEnemy.hp <= 0) {
+            result.enemyDefeated = true
+            this.endCombat(true)
+        }
+        
+        return result
+    }
+
+    executeEnemyAttack(result) {
+        const attack = this.currentEnemy.attack
+        const defense = this.getDefense()
+        const damage = Math.max(1, attack - defense + Math.floor(Math.random() * 5) - 2)
+        
+        this.player.hp -= damage
+        result.enemyDamage = damage
+        this.log(`${this.currentEnemy.name} deals ${damage} damage!`, 'combat')
+        
         if (this.player.hp <= 0) {
-            this.log("You're too weak to explore! Rest first.")
-            return
+            result.playerDefeated = true
+            this.player.hp = 0
+            this.endCombat(false)
         }
-
-        const roll = Math.random()
         
-        if (roll < 0.6) {
-            // Combat encounter
-            const maxEnemyIndex = Math.min(this.player.level, ENEMIES.length) - 1
-            const enemyIndex = Math.floor(Math.random() * (maxEnemyIndex + 1))
-            const enemy = { ...ENEMIES[enemyIndex] }
-            
-            this.combat(enemy)
-        } else if (roll < 0.8) {
-            // Find gold
-            const gold = Math.floor(Math.random() * 10 * this.player.level) + 5
-            this.player.gold += gold
-            this.log(`💰 You found ${gold} gold!`, 'reward')
+        return result
+    }
+
+    flee() {
+        if (!this.inCombat) return false
+        
+        const fleeChance = 0.4 + (this.getSpeed() - this.currentEnemy.speed) * 0.05
+        
+        if (Math.random() < fleeChance) {
+            this.log('You escaped!', 'info')
+            this.inCombat = false
+            this.currentEnemy = null
+            this.enemyPosition = null
+            return true
         } else {
-            // Find item
-            const item = ITEMS[Math.floor(Math.random() * ITEMS.length)]
-            if (this.player.inventory.length < 9) {
-                this.player.inventory.push(item.id)
-                this.log(`📦 You found a ${item.name}!`, 'reward')
-            } else {
-                this.log("You found something but your inventory is full!")
-            }
-        }
-        
-        this.updateUI()
-        this.save()
-    }
-
-    // Combat system
-    combat(enemy) {
-        this.log(`⚔️ A wild ${enemy.name} appears!`, 'combat')
-        
-        while (enemy.hp > 0 && this.player.hp > 0) {
-            // Player attacks
-            const playerDmg = Math.max(1, this.player.attack - Math.floor(Math.random() * 5))
-            enemy.hp -= playerDmg
-            
-            if (enemy.hp <= 0) {
-                this.log(`You defeated the ${enemy.name}!`, 'combat')
-                this.gainXP(enemy.xp)
-                this.player.gold += enemy.gold
-                this.log(`+${enemy.xp} XP, +${enemy.gold} gold`, 'reward')
-                return
-            }
-            
-            // Enemy attacks
-            const enemyDmg = Math.max(1, enemy.attack - this.player.defense + Math.floor(Math.random() * 5))
-            this.player.hp = Math.max(0, this.player.hp - enemyDmg)
-            this.log(`${enemy.name} hits you for ${enemyDmg} damage!`, 'combat')
-            
-            if (this.player.hp <= 0) {
-                this.log("💀 You were defeated! Rest to recover.", 'combat')
-                this.player.hp = 0
-            }
+            this.log('Failed to escape!', 'combat')
+            // Enemy gets a free hit
+            const result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false }
+            this.executeEnemyAttack(result)
+            return false
         }
     }
 
-    // XP and leveling
-    gainXP(amount) {
-        this.player.xp += amount
+    endCombat(victory) {
+        if (victory) {
+            const enemy = this.currentEnemy
+            
+            // XP
+            this.player.xp += enemy.xp
+            this.log(`+${enemy.xp} XP`, 'reward')
+            
+            // Gold
+            this.player.gold += enemy.gold
+            this.player.stats.totalGold += enemy.gold
+            this.log(`+${enemy.gold} gold`, 'reward')
+            
+            // Stats
+            this.player.stats.enemiesKilled++
+            
+            // Check level up
+            this.checkLevelUp()
+            
+            // Loot drop
+            const loot = getLootDrop(this.player.floor)
+            if (loot) {
+                if (this.player.inventory.length < 20) {
+                    this.player.inventory.push(loot.id)
+                    this.log(`Found ${loot.emoji} ${loot.name}!`, 'reward')
+                } else {
+                    this.log(`Found ${loot.name} but inventory full!`, 'info')
+                }
+            }
+            
+            // Remove enemy from dungeon
+            this.dungeon.removeEnemy(this.enemyPosition.x, this.enemyPosition.y)
+            
+            // Move player to enemy position
+            this.dungeon.playerPos = { ...this.enemyPosition }
+            this.dungeon.revealAround(this.enemyPosition.x, this.enemyPosition.y)
+        } else {
+            this.log('💀 You died!', 'death')
+        }
         
-        while (this.player.xp >= this.player.xp_to_level) {
-            this.player.xp -= this.player.xp_to_level
+        this.inCombat = false
+        this.currentEnemy = null
+        this.enemyPosition = null
+        this.saveGame()
+    }
+
+    checkLevelUp() {
+        while (this.player.xp >= this.player.xpToLevel) {
+            this.player.xp -= this.player.xpToLevel
             this.player.level++
-            this.player.xp_to_level = Math.floor(this.player.xp_to_level * 1.5)
-            this.player.max_hp += 20
-            this.player.hp = this.player.max_hp
-            this.player.attack += 3
-            this.player.defense += 2
+            this.player.xpToLevel = Math.floor(this.player.xpToLevel * 1.5)
             
-            this.log(`🎉 LEVEL UP! You are now level ${this.player.level}!`, 'reward')
+            // Stat increases
+            this.player.maxHp += 15
+            this.player.hp = this.getMaxHp()
+            this.player.baseAttack += 2
+            this.player.baseDefense += 1
+            this.player.baseSpeed += 1
+            
+            this.log(`🎉 LEVEL UP! Now level ${this.player.level}`, 'levelup')
         }
     }
 
-    // Rest action
-    rest() {
-        const healAmount = Math.floor(this.player.max_hp * 0.3)
-        const oldHp = this.player.hp
-        this.player.hp = Math.min(this.player.max_hp, this.player.hp + healAmount)
-        const healed = this.player.hp - oldHp
-        
-        this.log(`💤 You rest and recover ${healed} HP.`, 'heal')
-        this.updateUI()
-        this.save()
-    }
-
-    // Shop action
-    shop() {
-        const item = ITEMS[Math.floor(Math.random() * ITEMS.length)]
-        
-        if (this.player.gold >= item.price) {
-            if (this.player.inventory.length < 9) {
-                this.player.gold -= item.price
-                this.player.inventory.push(item.id)
-                this.log(`🏪 Bought ${item.name} for ${item.price} gold!`, 'reward')
-            } else {
-                this.log("Your inventory is full!")
-            }
-        } else {
-            this.log(`Not enough gold for ${item.name} (costs ${item.price})`)
-        }
-        
-        this.updateUI()
-        this.save()
-    }
-
-    // Use item from inventory
+    // =====================
+    // INVENTORY & EQUIPMENT
+    // =====================
+    
     useItem(index) {
         const itemId = this.player.inventory[index]
-        const item = ITEMS.find(it => it.id === itemId)
+        if (!itemId) return false
         
-        if (!item) return
+        const item = ITEMS[itemId]
+        if (!item) return false
         
-        if (item.effect === 'heal') {
-            const oldHp = this.player.hp
-            this.player.hp = Math.min(this.player.max_hp, this.player.hp + item.value)
-            this.log(`🧪 Used ${item.name}, restored ${this.player.hp - oldHp} HP!`, 'heal')
+        if (item.type === 'consumable') {
+            if (item.effect.heal) {
+                const oldHp = this.player.hp
+                this.player.hp = Math.min(this.getMaxHp(), this.player.hp + item.effect.heal)
+                this.log(`Used ${item.name}, healed ${this.player.hp - oldHp} HP`, 'heal')
+            }
             this.player.inventory.splice(index, 1)
-        } else if (item.effect === 'attack') {
-            this.player.attack += item.value
-            this.log(`🗡️ Equipped ${item.name}, +${item.value} Attack!`, 'reward')
-            this.player.inventory.splice(index, 1)
-        } else if (item.effect === 'defense') {
-            this.player.defense += item.value
-            this.log(`🛡️ Equipped ${item.name}, +${item.value} Defense!`, 'reward')
-            this.player.inventory.splice(index, 1)
+            this.saveGame()
+            return true
         }
         
-        this.updateUI()
-        this.save()
+        return false
+    }
+
+    equipItem(index) {
+        const itemId = this.player.inventory[index]
+        if (!itemId) return false
+        
+        const item = ITEMS[itemId]
+        if (!item || !EQUIPMENT_SLOTS.includes(item.type)) return false
+        
+        // Swap with current equipment
+        const currentEquipped = this.player.equipment[item.type]
+        this.player.equipment[item.type] = itemId
+        this.player.inventory.splice(index, 1)
+        
+        if (currentEquipped) {
+            this.player.inventory.push(currentEquipped)
+        }
+        
+        this.log(`Equipped ${item.emoji} ${item.name}`, 'info')
+        this.saveGame()
+        return true
+    }
+
+    unequipItem(slot) {
+        const itemId = this.player.equipment[slot]
+        if (!itemId) return false
+        
+        if (this.player.inventory.length >= 20) {
+            this.log('Inventory full!', 'info')
+            return false
+        }
+        
+        const item = ITEMS[itemId]
+        this.player.equipment[slot] = null
+        this.player.inventory.push(itemId)
+        this.log(`Unequipped ${item.name}`, 'info')
+        this.saveGame()
+        return true
+    }
+
+    dropItem(index) {
+        const itemId = this.player.inventory[index]
+        if (!itemId) return false
+        
+        const item = ITEMS[itemId]
+        this.player.inventory.splice(index, 1)
+        this.log(`Dropped ${item.name}`, 'info')
+        this.saveGame()
+        return true
+    }
+
+    // =====================
+    // LOGGING
+    // =====================
+    
+    log(message, type = '') {
+        this.gameLog.push({ message, type, time: Date.now() })
+        if (this.gameLog.length > 100) {
+            this.gameLog.shift()
+        }
     }
 }

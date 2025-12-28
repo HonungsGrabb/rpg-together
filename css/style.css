@@ -4,338 +4,680 @@
     box-sizing: border-box;
 }
 
+:root {
+    --bg-dark: #0d1117;
+    --bg-mid: #161b22;
+    --bg-light: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --gold: #ffd700;
+    --hp: #da3633;
+    --xp: #238636;
+    --enemy: #f85149;
+    --info: #58a6ff;
+}
+
 body {
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    color: #eee;
+    font-family: 'Consolas', 'Monaco', monospace;
+    background: var(--bg-dark);
+    color: var(--text);
     min-height: 100vh;
+    overflow: hidden;
 }
 
-.hidden {
-    display: none !important;
-}
+.hidden { display: none !important; }
 
-/* Auth Screen */
-#auth-screen {
+.screen {
+    min-height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
 }
 
+/* ===================== */
+/* AUTH SCREEN */
+/* ===================== */
 .auth-container {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
+    background: var(--bg-mid);
+    border: 1px solid var(--border);
+    border-radius: 12px;
     padding: 40px;
     text-align: center;
-    backdrop-filter: blur(10px);
+    max-width: 400px;
 }
 
 .auth-container h1 {
-    font-size: 2.5rem;
-    margin-bottom: 30px;
-    color: #ffd700;
+    color: var(--gold);
+    font-size: 2rem;
+    margin-bottom: 8px;
 }
 
-.auth-form h2 {
-    margin-bottom: 20px;
-    color: #aaa;
+.auth-container .subtitle {
+    color: var(--text-dim);
+    margin-bottom: 30px;
 }
 
 .auth-form input {
     display: block;
-    width: 280px;
+    width: 100%;
     padding: 12px 16px;
     margin: 10px 0;
-    border: 1px solid #444;
-    border-radius: 8px;
-    background: #1a1a2e;
-    color: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-dark);
+    color: var(--text);
     font-size: 1rem;
+    font-family: inherit;
 }
 
 .auth-form input:focus {
     outline: none;
-    border-color: #ffd700;
+    border-color: var(--gold);
 }
 
-.auth-form button {
+.auth-form button, button {
     width: 100%;
     padding: 14px;
-    margin-top: 20px;
+    margin-top: 15px;
     border: none;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #ffd700, #ff9500);
-    color: #1a1a2e;
-    font-size: 1.1rem;
+    border-radius: 6px;
+    background: var(--gold);
+    color: var(--bg-dark);
+    font-size: 1rem;
     font-weight: bold;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+    transition: opacity 0.2s;
 }
 
-.auth-form button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(255, 215, 0, 0.4);
+button:hover { opacity: 0.9; }
+
+.btn-secondary {
+    background: var(--bg-light);
+    color: var(--text);
+    border: 1px solid var(--border);
 }
 
 .auth-form p {
     margin-top: 20px;
-    color: #888;
+    color: var(--text-dim);
 }
 
 .auth-form a {
-    color: #ffd700;
+    color: var(--gold);
     text-decoration: none;
 }
 
 #auth-message {
-    margin-top: 20px;
-    padding: 10px;
-    border-radius: 8px;
-    color: #ff6b6b;
+    margin-top: 15px;
+    color: var(--enemy);
 }
 
-#auth-message.success {
-    color: #51cf66;
+#auth-message.success { color: var(--xp); }
+
+/* ===================== */
+/* MENU SCREENS */
+/* ===================== */
+.menu-container {
+    background: var(--bg-mid);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    max-width: 500px;
+    width: 90%;
 }
 
-/* Game Screen */
-#game-screen {
+.menu-container.wide {
+    max-width: 900px;
+}
+
+.menu-container h1 {
+    color: var(--gold);
+    margin-bottom: 30px;
+}
+
+/* Save Slots */
+#save-slots {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    gap: 15px;
+    margin-bottom: 20px;
 }
 
-header {
+.save-slot {
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    text-align: left;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px 30px;
-    background: rgba(0, 0, 0, 0.3);
-    border-bottom: 1px solid rgba(255, 215, 0, 0.2);
 }
 
-.player-info {
-    display: flex;
-    gap: 20px;
-    align-items: center;
+.save-slot:hover { border-color: var(--gold); }
+
+.save-slot.empty {
+    justify-content: center;
+    color: var(--text-dim);
 }
 
-#player-name {
-    font-size: 1.3rem;
-    font-weight: bold;
-    color: #ffd700;
-}
+.save-info h3 { margin-bottom: 5px; }
 
-#player-level {
-    background: #ffd700;
-    color: #1a1a2e;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-weight: bold;
+.save-info p {
+    color: var(--text-dim);
     font-size: 0.9rem;
 }
 
-#logout-btn {
-    padding: 8px 20px;
-    border: 1px solid #666;
-    border-radius: 6px;
-    background: transparent;
-    color: #aaa;
+.save-slot .delete-btn {
+    background: var(--enemy);
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    width: auto;
+    margin: 0;
+}
+
+/* Selection Grid (Race/Class) */
+.selection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.selection-card {
+    background: var(--bg-light);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
     cursor: pointer;
     transition: all 0.2s;
+    text-align: center;
 }
 
-#logout-btn:hover {
-    border-color: #ff6b6b;
-    color: #ff6b6b;
+.selection-card:hover {
+    border-color: var(--gold);
+    transform: translateY(-2px);
 }
 
-main {
-    display: grid;
-    grid-template-columns: 250px 1fr 250px;
-    gap: 20px;
-    padding: 20px;
-    flex: 1;
-    overflow: hidden;
+.selection-card .emoji {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
 }
 
-/* Panels */
-.stats-panel, .inventory-panel {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 20px;
+.selection-card h3 {
+    color: var(--gold);
+    margin-bottom: 8px;
 }
 
-.stats-panel h3, .inventory-panel h3 {
-    color: #ffd700;
+.selection-card p {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-bottom: 10px;
+}
+
+.selection-card .bonuses {
+    font-size: 0.8rem;
+    color: var(--xp);
+}
+
+/* Name Screen */
+#name-preview {
+    font-size: 1.2rem;
     margin-bottom: 20px;
-    font-size: 1.1rem;
+    color: var(--text-dim);
 }
 
-.stat {
-    margin: 15px 0;
+#character-name {
+    width: 100%;
+    padding: 14px;
+    font-size: 1.2rem;
+    text-align: center;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    margin-bottom: 10px;
 }
 
-.stat > span:first-child {
-    display: block;
-    margin-bottom: 5px;
-    color: #888;
+/* ===================== */
+/* GAME SCREEN */
+/* ===================== */
+#game-screen {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+}
+
+.game-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: var(--bg-mid);
+    border-bottom: 1px solid var(--border);
+}
+
+.header-left, .header-right {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+#player-name-display {
+    font-weight: bold;
+    color: var(--gold);
+}
+
+#player-class-badge {
+    background: var(--bg-light);
+    padding: 4px 10px;
+    border-radius: 4px;
     font-size: 0.85rem;
 }
 
+#floor-display {
+    color: var(--text-dim);
+}
+
+#gold-display {
+    color: var(--gold);
+}
+
+#menu-btn {
+    background: var(--bg-light);
+    color: var(--text);
+    padding: 8px 12px;
+    width: auto;
+    margin: 0;
+}
+
+/* Main Game Layout */
+.game-main {
+    display: grid;
+    grid-template-columns: 220px 1fr 220px;
+    gap: 15px;
+    padding: 15px;
+    height: calc(100vh - 52px);
+    overflow: hidden;
+}
+
+.panel {
+    background: var(--bg-mid);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 15px;
+    overflow-y: auto;
+}
+
+.panel h3 {
+    color: var(--gold);
+    margin-bottom: 15px;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Stats Section */
+.stat-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.stat-label {
+    width: 25px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
 .bar {
-    height: 20px;
-    background: #2a2a4a;
-    border-radius: 10px;
+    flex: 1;
+    height: 16px;
+    background: var(--bg-dark);
+    border-radius: 3px;
     overflow: hidden;
 }
 
 .bar-fill {
     height: 100%;
-    transition: width 0.3s ease;
+    transition: width 0.3s;
 }
 
-.hp-bar .bar-fill {
-    background: linear-gradient(90deg, #ff6b6b, #ee5a5a);
-    width: 100%;
-}
+.bar-fill.hp { background: var(--hp); width: 100%; }
+.bar-fill.xp { background: var(--xp); width: 0%; }
+.bar-fill.enemy { background: var(--enemy); width: 100%; }
 
-.xp-bar .bar-fill {
-    background: linear-gradient(90deg, #4ecdc4, #44a08d);
-    width: 0%;
-}
-
-.stat > span:last-child {
-    display: block;
+.stat-value {
+    width: 65px;
     text-align: right;
     font-size: 0.8rem;
-    color: #666;
-    margin-top: 4px;
+    color: var(--text-dim);
 }
 
 .stat-numbers {
-    margin-top: 30px;
+    margin-top: 20px;
 }
 
-.stat-numbers p {
-    padding: 10px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
 }
 
-/* Game Area */
-.game-area {
+/* Equipment Section */
+.equipment-section {
+    margin-top: 20px;
+}
+
+#equipment-slots {
     display: flex;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    overflow: hidden;
+    gap: 8px;
 }
 
-#game-log {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
-    font-size: 0.95rem;
-    line-height: 1.8;
-}
-
-#game-log p {
-    margin: 8px 0;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 6px;
-    border-left: 3px solid #444;
-}
-
-#game-log p.combat {
-    border-left-color: #ff6b6b;
-}
-
-#game-log p.reward {
-    border-left-color: #ffd700;
-}
-
-#game-log p.heal {
-    border-left-color: #51cf66;
-}
-
-.actions {
+.equip-slot {
     display: flex;
+    align-items: center;
     gap: 10px;
-    padding: 20px;
-    background: rgba(0, 0, 0, 0.2);
-}
-
-.actions button {
-    flex: 1;
-    padding: 15px;
-    border: none;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #3a3a5c, #2a2a4a);
-    color: #fff;
-    font-size: 1rem;
+    background: var(--bg-dark);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 0.85rem;
     cursor: pointer;
-    transition: all 0.2s;
     border: 1px solid transparent;
 }
 
-.actions button:hover {
-    background: linear-gradient(135deg, #4a4a6c, #3a3a5c);
-    border-color: #ffd700;
-    transform: translateY(-2px);
+.equip-slot:hover { border-color: var(--border); }
+
+.equip-slot .slot-name {
+    width: 60px;
+    color: var(--text-dim);
+    text-transform: capitalize;
 }
 
-.actions button:active {
-    transform: translateY(0);
+.equip-slot .item-name {
+    flex: 1;
+}
+
+.equip-slot.empty .item-name {
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+/* Dungeon Grid */
+.panel-center {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#dungeon-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--bg-dark);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#dungeon-grid {
+    display: flex;
+    flex-direction: column;
+    font-family: monospace;
+    line-height: 1;
+}
+
+.grid-row {
+    display: flex;
+}
+
+.tile {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 16px;
+}
+
+.tile-hidden { background: #000; }
+.tile-floor { background: var(--bg-mid); color: #333; }
+.tile-wall { background: #2d333b; color: #444; }
+.tile-stairs { background: var(--bg-mid); color: var(--gold); }
+.tile-enemy { background: var(--bg-mid); color: var(--enemy); }
+.tile-chest { background: var(--bg-mid); color: var(--gold); }
+.tile-player { background: var(--info) !important; color: #fff !important; font-weight: bold; }
+
+/* Game Log */
+#game-log {
+    height: 120px;
+    overflow-y: auto;
+    background: var(--bg-dark);
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 0.85rem;
+}
+
+#game-log p {
+    margin: 4px 0;
+    padding: 2px 0;
+}
+
+#game-log .combat { color: var(--enemy); }
+#game-log .reward { color: var(--gold); }
+#game-log .heal { color: var(--xp); }
+#game-log .levelup { color: var(--gold); font-weight: bold; }
+#game-log .info { color: var(--info); }
+#game-log .death { color: var(--enemy); font-weight: bold; }
+
+.controls-hint {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
 }
 
 /* Inventory */
 #inventory-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.inv-slot {
+    aspect-ratio: 1;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.inv-slot:hover { border-color: var(--gold); }
+.inv-slot.empty { opacity: 0.3; cursor: default; }
+.inv-slot.empty:hover { border-color: var(--border); }
+
+/* ===================== */
+/* OVERLAYS */
+/* ===================== */
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+/* Combat */
+.combat-container {
+    background: var(--bg-mid);
+    border: 2px solid var(--enemy);
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    min-width: 400px;
+}
+
+.combat-header {
+    font-size: 1.5rem;
+    color: var(--enemy);
+    margin-bottom: 20px;
+}
+
+.combatants {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.combatant {
+    text-align: center;
+}
+
+.enemy-emoji {
+    font-size: 3rem;
+    margin-bottom: 10px;
+}
+
+.combat-hp-bar {
+    width: 120px;
+    height: 12px;
+    background: var(--bg-dark);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 8px auto;
+}
+
+.vs {
+    font-size: 1.5rem;
+    color: var(--text-dim);
+}
+
+#combat-log {
+    height: 80px;
+    overflow-y: auto;
+    background: var(--bg-dark);
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 15px;
+    font-size: 0.85rem;
+    text-align: left;
+}
+
+.combat-actions {
+    display: flex;
     gap: 10px;
 }
 
-.inventory-slot {
-    aspect-ratio: 1;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid #333;
-    border-radius: 8px;
+.combat-actions button {
+    flex: 1;
+}
+
+#btn-flee {
+    background: var(--bg-light);
+    color: var(--text);
+}
+
+/* Death */
+.death-container {
+    background: var(--bg-mid);
+    border: 2px solid var(--enemy);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+}
+
+.death-container h1 {
+    color: var(--enemy);
+    margin-bottom: 20px;
+}
+
+#death-stats {
+    margin-bottom: 20px;
+    color: var(--text-dim);
+}
+
+/* Stairs */
+.stairs-container {
+    background: var(--bg-mid);
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+}
+
+.stairs-container h2 {
+    color: var(--gold);
+    margin-bottom: 15px;
+}
+
+.stairs-actions {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    cursor: pointer;
-    transition: all 0.2s;
+    gap: 10px;
+    margin-top: 20px;
 }
 
-.inventory-slot:hover {
-    border-color: #ffd700;
-    background: rgba(255, 215, 0, 0.1);
+.stairs-actions button { flex: 1; }
+
+/* Pause */
+.pause-container {
+    background: var(--bg-mid);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    min-width: 250px;
 }
 
-.inventory-slot.empty {
-    opacity: 0.3;
+.pause-container h2 {
+    margin-bottom: 20px;
 }
 
-/* Responsive */
+.pause-container button {
+    margin-top: 10px;
+}
+
+/* ===================== */
+/* RESPONSIVE */
+/* ===================== */
 @media (max-width: 900px) {
-    main {
+    .game-main {
         grid-template-columns: 1fr;
         grid-template-rows: auto 1fr auto;
     }
     
-    .stats-panel, .inventory-panel {
+    .panel-left, .panel-right {
         display: flex;
         flex-wrap: wrap;
         gap: 20px;
     }
     
-    .stats-panel h3, .inventory-panel h3 {
-        width: 100%;
+    .panel-left > *, .panel-right > * {
+        flex: 1;
+        min-width: 150px;
     }
 }
