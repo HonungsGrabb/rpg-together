@@ -14,6 +14,43 @@ export class Multiplayer {
         this.pendingInvites = []
         this.onPartyUpdate = null
         this.onPartyInvite = null
+        
+        // Set up beforeunload to clean up when closing browser
+        window.addEventListener('beforeunload', () => {
+            this.cleanupOnExit()
+        })
+    }
+    
+    cleanupOnExit() {
+        // Synchronous cleanup - use sendBeacon for reliability
+        if (this.game.userId) {
+            // Use fetch with keepalive for cleanup
+            const url = `${supabase.supabaseUrl}/rest/v1/online_players?user_id=eq.${this.game.userId}`
+            fetch(url, {
+                method: 'DELETE',
+                headers: {
+                    'apikey': supabase.supabaseKey,
+                    'Authorization': `Bearer ${supabase.supabaseKey}`
+                },
+                keepalive: true
+            }).catch(() => {})
+            
+            // Also try to leave party
+            if (this.party) {
+                const partyUrl = `${supabase.supabaseUrl}/rest/v1/party_members?user_id=eq.${this.game.userId}`
+                fetch(partyUrl, {
+                    method: 'DELETE',
+                    headers: {
+                        'apikey': supabase.supabaseKey,
+                        'Authorization': `Bearer ${supabase.supabaseKey}`
+                    },
+                    keepalive: true
+                }).catch(() => {})
+            }
+        }
+        
+        // Broadcast leave
+        this.broadcastLeave()
     }
 
     async connect() {
@@ -73,11 +110,19 @@ export class Multiplayer {
         await this.loadExistingParty()
         await this.loadPendingInvites()
 
-        // Set up periodic presence updates
-        this.presenceInterval = setInterval(() => this.updatePresence(), 30000)
+        // Set up periodic presence updates (every 15 seconds)
+        this.presenceInterval = setInterval(() => this.updatePresence(), 15000)
 
-        // Clean up old players periodically
-        this.cleanupInterval = setInterval(() => this.cleanupOldPlayers(), 60000)
+        // Clean up old players more frequently (every 20 seconds)
+        this.cleanupInterval = setInterval(() => {
+            this.cleanupOldPlayers()
+            this.loadPlayersInArea() // Refresh player list
+        }, 20000)
+        
+        // Refresh party data periodically (every 30 seconds)
+        this.partyRefreshInterval = setInterval(() => {
+            if (this.party) this.loadPartyData(this.party.id)
+        }, 30000)
 
         console.log('Multiplayer connected!')
     }
@@ -91,6 +136,7 @@ export class Multiplayer {
 
         if (this.presenceInterval) clearInterval(this.presenceInterval)
         if (this.cleanupInterval) clearInterval(this.cleanupInterval)
+        if (this.partyRefreshInterval) clearInterval(this.partyRefreshInterval)
 
         // Leave party if in one
         if (this.party) {
@@ -121,6 +167,8 @@ export class Multiplayer {
             dungeon_floor: p.dungeonFloor || 0,
             hp: p.hp,
             max_hp: this.game.getMaxHp(),
+            symbol: p.symbol || '@',
+            color: p.color || '#4a9eff',
             last_seen: new Date().toISOString()
         }
 
@@ -135,7 +183,7 @@ export class Multiplayer {
             .from('online_players')
             .select('*')
             .neq('user_id', this.game.userId)
-            .gt('last_seen', new Date(Date.now() - 120000).toISOString())
+            .gt('last_seen', new Date(Date.now() - 45000).toISOString())
 
         if (this.game.inDungeon) {
             query = query
@@ -180,7 +228,9 @@ export class Multiplayer {
                 x,
                 y,
                 inDungeon: this.game.inDungeon,
-                dungeonFloor: p.dungeonFloor
+                dungeonFloor: p.dungeonFloor,
+                symbol: p.symbol || '@',
+                color: p.color || '#4a9eff'
             }
         })
     }
@@ -270,7 +320,9 @@ export class Multiplayer {
                 pos_x: payload.x,
                 pos_y: payload.y,
                 world_x: payload.worldX,
-                world_y: payload.worldY
+                world_y: payload.worldY,
+                symbol: payload.symbol || '@',
+                color: payload.color || '#4a9eff'
             })
 
             if (this.onPlayersUpdate) this.onPlayersUpdate(this.otherPlayers)
@@ -314,7 +366,7 @@ export class Multiplayer {
     }
 
     async cleanupOldPlayers() {
-        const cutoff = Date.now() - 120000
+        const cutoff = Date.now() - 45000
         for (const [id, player] of this.otherPlayers) {
             if (new Date(player.last_seen).getTime() < cutoff) {
                 this.otherPlayers.delete(id)

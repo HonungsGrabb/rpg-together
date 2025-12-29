@@ -118,25 +118,43 @@ export class Dungeon {
         const newX = this.playerPos.x + dx, newY = this.playerPos.y + dy
         if (!this.isWalkable(newX, newY)) return { moved: false }
         const tile = this.getTile(newX, newY)
-        if (tile === TILES.ENEMY) return { moved: false, encounter: { type: 'enemy', enemy: this.getEnemy(newX, newY), x: newX, y: newY } }
+        if (tile === TILES.ENEMY) {
+            // Dungeons: 30% chance for 2 enemies, 10% chance for 3
+            const roll = Math.random()
+            const baseEnemy = this.getEnemy(newX, newY)
+            let enemies = [baseEnemy]
+            
+            if (roll < 0.30) {
+                enemies.push(scaleEnemy(getEnemyForFloor(this.floor), this.floor))
+            }
+            if (roll < 0.10) {
+                enemies.push(scaleEnemy(getEnemyForFloor(this.floor), this.floor))
+            }
+            
+            return { moved: false, encounter: { type: 'enemy', enemies, x: newX, y: newY } }
+        }
         if (tile === TILES.CHEST) { const loot = this.openChest(newX, newY); this.playerPos = { x: newX, y: newY }; this.revealAround(newX, newY); return { moved: true, encounter: { type: 'chest', loot } } }
         if (tile === TILES.STAIRS) { this.playerPos = { x: newX, y: newY }; this.revealAround(newX, newY); return { moved: true, encounter: { type: 'stairs' } } }
         if (tile === TILES.EXIT) { this.playerPos = { x: newX, y: newY }; return { moved: true, encounter: { type: 'exit' } } }
         this.playerPos = { x: newX, y: newY }; this.revealAround(newX, newY); return { moved: true }
     }
 
-    render(containerId) {
+    render(containerId, playerSymbol = '@', playerColor = '#4a9eff') {
         const container = document.getElementById(containerId); if (!container) return
         let html = ''
         for (let y = 0; y < this.height; y++) {
             html += '<div class="grid-row">'
             for (let x = 0; x < this.width; x++) {
                 const key = `${x},${y}`, isRevealed = this.revealed.has(key), isPlayer = x === this.playerPos.x && y === this.playerPos.y
-                let tileClass = 'tile', tileChar = ' '
+                let tileClass = 'tile', tileChar = ' ', customStyle = ''
                 if (!isRevealed) tileClass += ' tile-hidden'
                 else { const tile = this.grid[y][x], display = TILE_DISPLAY[tile]; tileClass += ' ' + display.class; tileChar = display.char }
-                if (isPlayer) { tileClass += ' tile-player'; tileChar = '@' }
-                html += `<div class="${tileClass}">${tileChar}</div>`
+                if (isPlayer) { 
+                    tileClass += ' tile-player'
+                    tileChar = playerSymbol
+                    customStyle = `style="color:${playerColor}"`
+                }
+                html += `<div class="${tileClass}" ${customStyle}>${tileChar}</div>`
             }
             html += '</div>'
         }

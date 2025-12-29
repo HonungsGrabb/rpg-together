@@ -124,6 +124,41 @@ export class WorldArea {
         this.otherPlayers = players
     }
 
+    // Move enemies randomly
+    moveEnemies() {
+        const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]]
+        const newEnemies = new Map()
+        
+        for (const [key, enemy] of this.enemies) {
+            const [x, y] = key.split(',').map(Number)
+            
+            // 30% chance to move
+            if (Math.random() < 0.3) {
+                const dir = directions[Math.floor(Math.random() * directions.length)]
+                const newX = x + dir[0]
+                const newY = y + dir[1]
+                
+                // Check if new position is valid
+                if (newX > 0 && newX < this.width - 1 && 
+                    newY > 0 && newY < this.height - 1 &&
+                    this.grid[newY][newX] === WORLD_TILES.GROUND &&
+                    !newEnemies.has(`${newX},${newY}`) &&
+                    !(newX === this.playerPos.x && newY === this.playerPos.y)) {
+                    
+                    this.grid[y][x] = WORLD_TILES.GROUND
+                    this.grid[newY][newX] = WORLD_TILES.ENEMY
+                    newEnemies.set(`${newX},${newY}`, enemy)
+                } else {
+                    newEnemies.set(key, enemy)
+                }
+            } else {
+                newEnemies.set(key, enemy)
+            }
+        }
+        
+        this.enemies = newEnemies
+    }
+
     isWalkable(x, y) { return x >= 0 && x < this.width && y >= 0 && y < this.height && ![WORLD_TILES.WALL, WORLD_TILES.TREE, WORLD_TILES.WATER].includes(this.grid[y][x]) }
     isEdge(x, y) { return x <= 0 || x >= this.width - 1 || y <= 0 || y >= this.height - 1 }
     getEdgeDirection(x, y) {
@@ -152,12 +187,28 @@ export class WorldArea {
         }
         if (!this.isWalkable(newX, newY)) return { moved: false }
         const tile = this.getTile(newX, newY)
-        if (tile === WORLD_TILES.ENEMY) return { moved: false, encounter: { type: 'enemy', enemy: this.getEnemy(newX, newY), x: newX, y: newY } }
+        if (tile === WORLD_TILES.ENEMY) {
+            // 40% chance for group of 2, 15% chance for group of 3
+            const roll = Math.random()
+            const baseEnemy = this.getEnemy(newX, newY)
+            let enemies = [baseEnemy]
+            
+            if (roll < 0.40) {
+                // Add 1 more enemy
+                enemies.push(scaleEnemy(getOverworldEnemy(), baseEnemy.level || 1))
+            }
+            if (roll < 0.15) {
+                // Add another enemy (total 3)
+                enemies.push(scaleEnemy(getOverworldEnemy(), baseEnemy.level || 1))
+            }
+            
+            return { moved: false, encounter: { type: 'enemy', enemies, x: newX, y: newY } }
+        }
         if (tile === WORLD_TILES.DUNGEON) { this.playerPos = { x: newX, y: newY }; return { moved: true, encounter: { type: 'dungeon' } } }
         this.playerPos = { x: newX, y: newY }; return { moved: true }
     }
 
-    render(containerId) {
+    render(containerId, playerSymbol = '@', playerColor = '#4a9eff') {
         const container = document.getElementById(containerId); if (!container) return
         const biomeInfo = BIOMES[this.biome] || BIOMES.plains
         let html = ''
@@ -170,6 +221,7 @@ export class WorldArea {
                 let tileClass = 'tile ' + display.class
                 let tileChar = display.char
                 let dataAttr = ''
+                let customStyle = ''
                 
                 // Check for other players at this position
                 let otherPlayerHere = null
@@ -185,14 +237,17 @@ export class WorldArea {
                 
                 if (isPlayer) { 
                     tileClass += ' tile-player'
-                    tileChar = '@' 
+                    tileChar = playerSymbol
+                    customStyle = `style="color:${playerColor}"`
                 } else if (otherPlayerHere) {
                     tileClass += ' tile-other-player'
-                    tileChar = '☺'
+                    tileChar = otherPlayerHere.symbol || '☺'
+                    const otherColor = otherPlayerHere.color || '#ffeb3b'
+                    customStyle = `style="color:${otherColor}"`
                     dataAttr = `data-player-id="${otherPlayerHere.user_id}" data-player-name="${otherPlayerHere.player_name}"`
                 }
                 
-                html += `<div class="${tileClass}" ${dataAttr} title="${otherPlayerHere ? otherPlayerHere.player_name : ''}">${tileChar}</div>`
+                html += `<div class="${tileClass}" ${dataAttr} ${customStyle} title="${otherPlayerHere ? otherPlayerHere.player_name : ''}">${tileChar}</div>`
             }
             html += '</div>'
         }

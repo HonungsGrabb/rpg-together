@@ -10,9 +10,17 @@ export class Game {
     constructor() {
         this.userId = null; this.saves = []; this.currentSlot = null; this.player = null
         this.dungeon = null; this.world = null; this.inDungeon = false; this.inCombat = false
-        this.currentEnemy = null; this.enemyPosition = null; this.combatBuffs = []; this.combatDebuffs = []
-        this.enemyDot = null; this.gameLog = []; this.generatedItems = {}
+        this.currentEnemies = []; this.targetIndex = 0; this.enemyPosition = null
+        this.combatBuffs = []; this.combatDebuffs = []; this.enemyDots = []
+        this.gameLog = []; this.generatedItems = {}
         this.multiplayer = new Multiplayer(this)
+    }
+    
+    // For backwards compatibility
+    get currentEnemy() { return this.currentEnemies[this.targetIndex] || null }
+    set currentEnemy(val) { 
+        if (val) this.currentEnemies = [val]
+        else this.currentEnemies = []
     }
 
     async loadSaves(userId) {
@@ -21,7 +29,7 @@ export class Game {
         this.saves = data || []; return this.saves
     }
 
-    async createNewGame(slot, name, raceId, classId) {
+    async createNewGame(slot, name, raceId, classId, symbol = '@', color = '#4a9eff') {
         const race = RACES[raceId], cls = CLASSES[classId]
         const maxHp = BASE_STATS.hp + race.bonuses.hp + cls.bonuses.hp
         const maxMana = BASE_STATS.mana + race.bonuses.mana + cls.bonuses.mana
@@ -34,6 +42,7 @@ export class Game {
             baseMagicResist: BASE_STATS.magicResist + race.bonuses.magicResist + cls.bonuses.magicResist,
             baseSpeed: BASE_STATS.speed + race.bonuses.speed + cls.bonuses.speed,
             gold: 50, dungeonFloor: 0, worldX: 0, worldY: 0,
+            symbol, color, // Player appearance customization
             equipment: { weapon: cls.startingWeapon, offhand: null, helmet: null, chest: null, leggings: null, boots: null, amulet: null, ring1: null, ring2: null },
             inventory: ['health_potion', 'health_potion', 'mana_potion', 'warp_scroll'],
             learnedSpells: [], generatedItems: {},
@@ -120,7 +129,7 @@ export class Game {
     moveDungeon(dx, dy) {
         const result = this.dungeon.movePlayer(dx, dy)
         if (result.encounter) {
-            if (result.encounter.type === 'enemy') { this.startCombat(result.encounter.enemy, result.encounter.x, result.encounter.y); return { success: true, combat: true } }
+            if (result.encounter.type === 'enemy') { this.startCombat(result.encounter.enemies, result.encounter.x, result.encounter.y); return { success: true, combat: true } }
             if (result.encounter.type === 'stairs') return { success: true, stairs: true }
             if (result.encounter.type === 'exit') return { success: true, exit: true }
             if (result.encounter.type === 'chest' && result.encounter.loot) {
@@ -142,7 +151,7 @@ export class Game {
             return { success: true, newArea: true }
         }
         if (result.encounter) {
-            if (result.encounter.type === 'enemy') { this.startCombat(result.encounter.enemy, result.encounter.x, result.encounter.y); return { success: true, combat: true } }
+            if (result.encounter.type === 'enemy') { this.startCombat(result.encounter.enemies, result.encounter.x, result.encounter.y); return { success: true, combat: true } }
             if (result.encounter.type === 'dungeon') return { success: true, dungeon: true }
         }
         return { success: result.moved }
@@ -162,45 +171,124 @@ export class Game {
         this.inDungeon = false; this.dungeon = null; this.log('Returned to surface', 'info'); this.saveGame()
     }
 
-    startCombat(enemy, x, y) {
-        this.inCombat = true; this.currentEnemy = { ...enemy }; this.enemyPosition = { x, y }
-        this.combatBuffs = []; this.combatDebuffs = []; this.enemyDot = null
-        this.log(`⚔️ ${enemy.emoji} ${enemy.name} attacks!`, 'combat')
+    startCombat(enemies, x, y) {
+        this.inCombat = true
+        // Accept either single enemy or array
+        if (Array.isArray(enemies)) {
+            this.currentEnemies = enemies.map(e => ({ ...e }))
+        } else {
+            this.currentEnemies = [{ ...enemies }]
+        }
+        this.targetIndex = 0
+        this.enemyPosition = { x, y }
+        this.combatBuffs = []; this.combatDebuffs = []; this.enemyDots = new Array(this.currentEnemies.length).fill(null)
+        
+        if (this.currentEnemies.length === 1) {
+            this.log(`⚔️ ${this.currentEnemies[0].emoji} ${this.currentEnemies[0].name} attacks!`, 'combat')
+        } else {
+            const names = this.currentEnemies.map(e => e.name).join(', ')
+            this.log(`⚔️ A group attacks: ${names}!`, 'combat')
+        }
+    }
+    
+    setTarget(index) {
+        if (index >= 0 && index < this.currentEnemies.length && this.currentEnemies[index].hp > 0) {
+            this.targetIndex = index
+        }
+    }
+    
+    getAliveEnemies() {
+        return this.currentEnemies.filter(e => e.hp > 0)
     }
 
     calculatePhysicalDamage(rawDamage, targetDefense) { return Math.max(1, Math.floor(rawDamage - targetDefense * 0.5) + Math.floor(Math.random() * 5) - 2) }
     calculateMagicDamage(rawDamage, targetMagicResist) { return Math.max(1, Math.floor(rawDamage - targetMagicResist * 0.5) + Math.floor(Math.random() * 5) - 2) }
 
     playerAttack() {
-        if (!this.inCombat || !this.currentEnemy) return null
+        if (!this.inCombat || this.getAliveEnemies().length === 0) return null
+        
+        // Make sure target is valid
+        if (!this.currentEnemy || this.currentEnemy.hp <= 0) {
+            this.targetIndex = this.currentEnemies.findIndex(e => e.hp > 0)
+            if (this.targetIndex === -1) return null
+        }
+        
         const playerSpeed = this.getSpeed()
-        let enemySpeed = this.currentEnemy.speed; for (const d of this.combatDebuffs) if (d.speed) enemySpeed += d.speed
-        const playerFirst = playerSpeed >= enemySpeed
-        let result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false }
-        if (playerFirst) { result = this.executePlayerAttack(result); if (!result.enemyDefeated) result = this.executeEnemyAttack(result) }
-        else { result = this.executeEnemyAttack(result); if (!result.playerDefeated) result = this.executePlayerAttack(result) }
-        this.processDot(result); this.tickBuffs(); return result
+        const avgEnemySpeed = this.getAliveEnemies().reduce((sum, e) => sum + e.speed, 0) / this.getAliveEnemies().length
+        const playerFirst = playerSpeed >= avgEnemySpeed
+        
+        let result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, allDefeated: false, playerDefeated: false }
+        
+        if (playerFirst) { 
+            result = this.executePlayerAttack(result)
+            if (!result.allDefeated) result = this.executeAllEnemyAttacks(result)
+        } else { 
+            result = this.executeAllEnemyAttacks(result)
+            if (!result.playerDefeated) result = this.executePlayerAttack(result)
+        }
+        
+        this.processDots(result)
+        this.tickBuffs()
+        return result
     }
 
     executePlayerAttack(result) {
-        // Normal attack is PHYSICAL ONLY - no magic damage from weapons
+        const target = this.currentEnemy
+        if (!target || target.hp <= 0) return result
+        
         const wpnDmg = this.getWeaponDamage()
         const physRaw = wpnDmg.physical + this.getPhysicalPower() * 0.5
-        const physDmg = this.calculatePhysicalDamage(physRaw, this.currentEnemy.defense)
-        this.currentEnemy.hp -= physDmg; result.playerDamage = physDmg
-        this.log(`You deal ${physDmg} physical damage!`, 'combat')
-        if (this.currentEnemy.hp <= 0) { result.enemyDefeated = true; this.endCombat(true) }
+        const physDmg = this.calculatePhysicalDamage(physRaw, target.defense)
+        target.hp -= physDmg
+        result.playerDamage = physDmg
+        this.log(`You hit ${target.name} for ${physDmg} damage!`, 'combat')
+        
+        if (target.hp <= 0) {
+            this.log(`${target.emoji} ${target.name} defeated!`, 'reward')
+            result.enemyDefeated = true
+            
+            // Check if all enemies defeated
+            if (this.getAliveEnemies().length === 0) {
+                result.allDefeated = true
+                this.endCombat(true)
+            } else {
+                // Award partial XP/gold for this enemy
+                this.player.xp += target.xp
+                this.player.gold += target.gold
+                this.player.stats.totalGold += target.gold
+                this.player.stats.enemiesKilled++
+                this.log(`+${target.xp} XP, +${target.gold} gold`, 'reward')
+                this.checkLevelUp()
+                
+                // Switch to next alive enemy
+                this.targetIndex = this.currentEnemies.findIndex(e => e.hp > 0)
+            }
+        }
         return result
     }
 
-    executeEnemyAttack(result) {
-        const physDmg = this.calculatePhysicalDamage(this.currentEnemy.physicalDamage, this.getDefense())
-        const magDmg = this.currentEnemy.magicDamage > 0 ? this.calculateMagicDamage(this.currentEnemy.magicDamage, this.getMagicResist()) : 0
-        const totalDmg = physDmg + magDmg
-        this.player.hp -= totalDmg; result.enemyDamage = totalDmg
-        this.log(`${this.currentEnemy.name} deals ${totalDmg}!${magDmg > 0 ? ` (${physDmg} phys + ${magDmg} magic)` : ''}`, 'combat')
-        if (this.player.hp <= 0) { result.playerDefeated = true; this.player.hp = 0; this.endCombat(false) }
+    executeAllEnemyAttacks(result) {
+        let totalDamage = 0
+        for (const enemy of this.getAliveEnemies()) {
+            const physDmg = this.calculatePhysicalDamage(enemy.physicalDamage, this.getDefense())
+            const magDmg = enemy.magicDamage > 0 ? this.calculateMagicDamage(enemy.magicDamage, this.getMagicResist()) : 0
+            const dmg = physDmg + magDmg
+            this.player.hp -= dmg
+            totalDamage += dmg
+            this.log(`${enemy.name} hits you for ${dmg}!${magDmg > 0 ? ` (${physDmg} phys + ${magDmg} magic)` : ''}`, 'combat')
+        }
+        result.enemyDamage = totalDamage
+        if (this.player.hp <= 0) { 
+            result.playerDefeated = true
+            this.player.hp = 0
+            this.endCombat(false)
+        }
         return result
+    }
+
+    // Keep old method name for compatibility
+    executeEnemyAttack(result) {
+        return this.executeAllEnemyAttacks(result)
     }
 
     castSpell(spellId) {
@@ -238,18 +326,68 @@ export class Game {
         if (eff.baseHeal) { const heal = Math.floor(eff.baseHeal + this.getMagicPower() * (eff.healScaling || 1)); const old = this.player.hp; this.player.hp = Math.min(this.getMaxHp(), this.player.hp + heal); this.log(`Healed ${this.player.hp - old} HP!`, 'heal') }
         if (eff.buff) { this.combatBuffs.push({ ...eff.buff }); this.log(`Buff for ${eff.buff.turns} turns!`, 'info') }
         if (eff.debuff) { this.combatDebuffs.push({ ...eff.debuff }); this.log(`Enemy debuffed!`, 'info') }
-        if (eff.dot) { this.enemyDot = { ...eff.dot }; this.log(`Applied poison!`, 'info') }
-        if (this.currentEnemy.hp <= 0) { result.enemyDefeated = true; this.endCombat(true); return result }
-        result = this.executeEnemyAttack(result); this.processDot(result); this.tickBuffs(); return result
+        if (eff.dot) { this.enemyDots[this.targetIndex] = { ...eff.dot }; this.log(`Applied poison to ${this.currentEnemy.name}!`, 'info') }
+        
+        if (this.currentEnemy.hp <= 0) { 
+            this.log(`${this.currentEnemy.emoji} ${this.currentEnemy.name} defeated!`, 'reward')
+            result.enemyDefeated = true
+            
+            if (this.getAliveEnemies().length === 0) {
+                result.allDefeated = true
+                this.endCombat(true)
+                return result
+            } else {
+                // Award partial rewards
+                this.player.xp += this.currentEnemy.xp
+                this.player.gold += this.currentEnemy.gold
+                this.player.stats.totalGold += this.currentEnemy.gold
+                this.player.stats.enemiesKilled++
+                this.log(`+${this.currentEnemy.xp} XP, +${this.currentEnemy.gold} gold`, 'reward')
+                this.checkLevelUp()
+                this.targetIndex = this.currentEnemies.findIndex(e => e.hp > 0)
+            }
+        }
+        
+        if (!result.allDefeated) {
+            result = this.executeAllEnemyAttacks(result)
+            this.processDots(result)
+        }
+        this.tickBuffs()
+        return result
     }
 
-    processDot(result) {
-        if (this.enemyDot && !result.enemyDefeated) {
-            this.currentEnemy.hp -= this.enemyDot.damage; this.log(`Poison deals ${this.enemyDot.damage}!`, 'combat')
-            this.enemyDot.turns--; if (this.enemyDot.turns <= 0) this.enemyDot = null
-            if (this.currentEnemy.hp <= 0) { result.enemyDefeated = true; this.endCombat(true) }
+    processDots(result) {
+        for (let i = 0; i < this.currentEnemies.length; i++) {
+            const enemy = this.currentEnemies[i]
+            const dot = this.enemyDots[i]
+            if (dot && enemy.hp > 0 && !result.allDefeated) {
+                enemy.hp -= dot.damage
+                this.log(`Poison deals ${dot.damage} to ${enemy.name}!`, 'combat')
+                dot.turns--
+                if (dot.turns <= 0) this.enemyDots[i] = null
+                
+                if (enemy.hp <= 0) {
+                    this.log(`${enemy.emoji} ${enemy.name} defeated!`, 'reward')
+                    this.player.xp += enemy.xp
+                    this.player.gold += enemy.gold
+                    this.player.stats.totalGold += enemy.gold
+                    this.player.stats.enemiesKilled++
+                    this.log(`+${enemy.xp} XP, +${enemy.gold} gold`, 'reward')
+                    this.checkLevelUp()
+                    
+                    if (this.getAliveEnemies().length === 0) {
+                        result.allDefeated = true
+                        this.endCombat(true)
+                    } else if (this.targetIndex === i) {
+                        this.targetIndex = this.currentEnemies.findIndex(e => e.hp > 0)
+                    }
+                }
+            }
         }
     }
+    
+    // Old method name for compatibility
+    processDot(result) { this.processDots(result) }
 
     tickBuffs() {
         this.combatBuffs = this.combatBuffs.filter(b => { b.turns--; return b.turns > 0 })
@@ -258,27 +396,34 @@ export class Game {
 
     flee() {
         if (!this.inCombat) return false
-        let enemySpeed = this.currentEnemy.speed; for (const d of this.combatDebuffs) if (d.speed) enemySpeed += d.speed
-        if (Math.random() < 0.4 + (this.getSpeed() - enemySpeed) * 0.05) {
-            this.log('You escaped!', 'info'); this.inCombat = false; this.currentEnemy = null; this.enemyPosition = null
-            this.combatBuffs = []; this.combatDebuffs = []; this.enemyDot = null; return true
+        const avgSpeed = this.getAliveEnemies().reduce((sum, e) => sum + e.speed, 0) / this.getAliveEnemies().length
+        if (Math.random() < 0.4 + (this.getSpeed() - avgSpeed) * 0.05) {
+            this.log('You escaped!', 'info')
+            this.inCombat = false
+            this.currentEnemies = []
+            this.targetIndex = 0
+            this.enemyPosition = null
+            this.combatBuffs = []
+            this.combatDebuffs = []
+            this.enemyDots = []
+            return true
         }
-        this.log('Failed to escape!', 'combat'); this.executeEnemyAttack({ playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false }); return false
+        this.log('Failed to escape!', 'combat')
+        this.executeAllEnemyAttacks({ playerDamage: 0, enemyDamage: 0, enemyDefeated: false, allDefeated: false, playerDefeated: false })
+        return false
     }
 
     endCombat(victory) {
         if (victory) {
-            const enemy = this.currentEnemy
-            this.player.xp += enemy.xp; this.log(`+${enemy.xp} XP`, 'reward')
-            this.player.gold += enemy.gold; this.player.stats.totalGold += enemy.gold; this.log(`+${enemy.gold} gold`, 'reward')
-            this.player.stats.enemiesKilled++; this.checkLevelUp()
+            // Award loot only (XP/gold already awarded per enemy)
             const floor = this.inDungeon ? this.player.dungeonFloor : 1
             const loot = getLootDrop(floor, false)
             if (loot) this.addItemToInventory(loot)
             if (this.inDungeon) { this.dungeon.removeEnemy(this.enemyPosition.x, this.enemyPosition.y); this.dungeon.playerPos = { ...this.enemyPosition }; this.dungeon.revealAround(this.enemyPosition.x, this.enemyPosition.y) }
             else { this.world.removeEnemy(this.enemyPosition.x, this.enemyPosition.y); this.world.playerPos = { ...this.enemyPosition } }
+            this.log('Victory!', 'reward')
         } else this.log('💀 You died!', 'death')
-        this.inCombat = false; this.currentEnemy = null; this.enemyPosition = null; this.combatBuffs = []; this.combatDebuffs = []; this.enemyDot = null; this.saveGame()
+        this.inCombat = false; this.currentEnemies = []; this.targetIndex = 0; this.enemyPosition = null; this.combatBuffs = []; this.combatDebuffs = []; this.enemyDots = []; this.saveGame()
     }
 
     addItemToInventory(item) {

@@ -273,3 +273,27 @@ button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; 
 .player-menu.hidden { display: none; }
 .player-menu-header { font-size: 13px; color: var(--accent-gold); margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--bg-light); }
 .player-menu button { width: 100%; margin-bottom: 4px; font-size: 12px; padding: 6px 10px; }
+
+/* Character Customization */
+.customization-section { margin: 20px 0; }
+.customization-section h3 { font-size: 14px; color: var(--text-secondary); margin: 12px 0 8px; }
+.symbol-options, .color-options { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.symbol-btn { width: 40px; height: 40px; font-size: 20px; background: var(--bg-dark); border: 2px solid var(--bg-light); border-radius: 6px; color: var(--text-primary); cursor: pointer; transition: all 0.2s; }
+.symbol-btn:hover { border-color: var(--accent-blue); }
+.symbol-btn.selected { border-color: var(--accent-gold); background: rgba(255, 215, 0, 0.1); }
+.color-btn { width: 36px; height: 36px; border: 2px solid var(--bg-light); border-radius: 50%; cursor: pointer; transition: all 0.2s; }
+.color-btn:hover { transform: scale(1.1); }
+.color-btn.selected { border-color: var(--accent-gold); box-shadow: 0 0 8px rgba(255, 215, 0, 0.5); }
+.preview-character { margin-top: 16px; padding: 12px; background: var(--bg-dark); border-radius: 6px; text-align: center; }
+.preview-character span { font-family: monospace; }
+
+/* Multi-enemy Combat */
+.enemies-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 400px; }
+.enemies-container .enemy-side { background: var(--bg-dark); padding: 10px; border-radius: 6px; min-width: 100px; text-align: center; border: 2px solid transparent; transition: all 0.2s; }
+.enemies-container .enemy-side:hover:not(.defeated) { border-color: var(--accent-blue); }
+.enemies-container .enemy-side.targeted { border-color: var(--accent-gold); box-shadow: 0 0 8px rgba(255, 215, 0, 0.3); }
+.enemies-container .enemy-side.defeated { opacity: 0.4; }
+.enemies-container .enemy-emoji { font-size: 28px; display: block; margin-bottom: 4px; }
+.enemies-container h4 { font-size: 12px; margin: 4px 0; color: var(--text-primary); }
+.enemies-container .enemy-hp-text { font-size: 10px; color: var(--text-secondary); }
+.enemies-container .combat-bar { height: 6px; margin: 4px 0; }

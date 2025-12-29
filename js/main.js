@@ -4,6 +4,7 @@ import { RACES, CLASSES, ITEMS, SPELLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_IDS, RAR
 
 const game = new Game()
 let selectedSlot = null, selectedRace = null, selectedClass = null
+let selectedSymbol = '@', selectedColor = '#4a9eff'
 
 function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); document.getElementById(id)?.classList.remove('hidden') }
 function showModal(id) { document.getElementById(id)?.classList.remove('hidden') }
@@ -98,6 +99,8 @@ function startNewGame(slot) {
     showRaceScreen() 
 }
 
+let enemyMoveInterval = null
+
 async function loadExistingGame(slot) { 
     if (await game.loadGame(slot)) { 
         setupMultiplayerCallbacks()
@@ -105,7 +108,21 @@ async function loadExistingGame(slot) {
         updateGameUI()
         renderMap()
         setupInput()
+        setupEnemyMovement()
     } 
+}
+
+function setupEnemyMovement() {
+    // Clear existing interval
+    if (enemyMoveInterval) clearInterval(enemyMoveInterval)
+    
+    // Move enemies every 2 seconds
+    enemyMoveInterval = setInterval(() => {
+        if (game.world && !game.inDungeon && !game.inCombat) {
+            game.world.moveEnemies()
+            renderMap()
+        }
+    }, 2000)
 }
 
 function setupMultiplayerCallbacks() {
@@ -284,6 +301,41 @@ function showNameScreen() {
     document.getElementById('name-preview').textContent = `${RACES[selectedRace].emoji} ${RACES[selectedRace].name} ${CLASSES[selectedClass].emoji} ${CLASSES[selectedClass].name}`
     document.getElementById('character-name').value = ''
     document.getElementById('character-name').focus()
+    
+    // Reset customization
+    selectedSymbol = '@'
+    selectedColor = '#4a9eff'
+    updateCharacterPreview()
+    
+    // Set up symbol buttons
+    document.querySelectorAll('.symbol-btn').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.symbol === selectedSymbol)
+        btn.onclick = () => {
+            document.querySelectorAll('.symbol-btn').forEach(b => b.classList.remove('selected'))
+            btn.classList.add('selected')
+            selectedSymbol = btn.dataset.symbol
+            updateCharacterPreview()
+        }
+    })
+    
+    // Set up color buttons
+    document.querySelectorAll('.color-btn').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.color === selectedColor)
+        btn.onclick = () => {
+            document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'))
+            btn.classList.add('selected')
+            selectedColor = btn.dataset.color
+            updateCharacterPreview()
+        }
+    })
+}
+
+function updateCharacterPreview() {
+    const preview = document.getElementById('character-preview')
+    if (preview) {
+        preview.textContent = selectedSymbol
+        preview.style.color = selectedColor
+    }
 }
 
 document.getElementById('race-back-btn')?.addEventListener('click', () => showScreen('save-screen'))
@@ -293,12 +345,13 @@ document.getElementById('name-back-btn')?.addEventListener('click', showClassScr
 document.getElementById('start-game-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('character-name').value.trim()
     if (!name) return alert('Enter a name')
-    await game.createNewGame(selectedSlot, name, selectedRace, selectedClass)
+    await game.createNewGame(selectedSlot, name, selectedRace, selectedClass, selectedSymbol, selectedColor)
     setupMultiplayerCallbacks()
     showScreen('game-screen')
     updateGameUI()
     renderMap()
     setupInput()
+    setupEnemyMovement()
 })
 
 // Game UI
@@ -335,8 +388,12 @@ function updateGameUI() {
 }
 
 function renderMap() { 
-    if (game.inDungeon && game.dungeon) game.dungeon.render('map-grid')
-    else if (game.world) game.world.render('map-grid')
+    const p = game.player
+    const symbol = p?.symbol || '@'
+    const color = p?.color || '#4a9eff'
+    
+    if (game.inDungeon && game.dungeon) game.dungeon.render('map-grid', symbol, color)
+    else if (game.world) game.world.render('map-grid', symbol, color)
     
     // Add click handlers for other players
     document.querySelectorAll('.tile-other-player').forEach(tile => {
@@ -486,26 +543,56 @@ function showItemDetail(item, equipSlot = null, invIndex = null) {
 
 // Combat
 function showCombatUI() {
-    const p = game.player, e = game.currentEnemy
+    const p = game.player
     document.getElementById('combat-player-name').textContent = p.name
-    document.getElementById('combat-enemy-emoji').textContent = e.emoji
-    document.getElementById('combat-enemy-name').textContent = e.name
+    renderEnemies()
     renderCombatSpells()
     document.getElementById('combat-log-modal').innerHTML = ''
     updateCombatUI()
     showModal('combat-modal')
 }
 
+function renderEnemies() {
+    const container = document.getElementById('enemies-container')
+    container.innerHTML = ''
+    
+    game.currentEnemies.forEach((enemy, index) => {
+        const isTarget = index === game.targetIndex
+        const isDead = enemy.hp <= 0
+        
+        const div = document.createElement('div')
+        div.className = `combatant enemy-side ${isTarget ? 'targeted' : ''} ${isDead ? 'defeated' : ''}`
+        div.innerHTML = `
+            <span class="enemy-emoji">${enemy.emoji}</span>
+            <h4>${enemy.name}</h4>
+            <div class="combat-bar enemy-bar-bg">
+                <div class="bar-fill enemy-bar-fill" style="width:${Math.max(0, (enemy.hp / enemy.maxHp) * 100)}%"></div>
+            </div>
+            <span class="enemy-hp-text">${Math.max(0, enemy.hp)}/${enemy.maxHp}</span>
+        `
+        
+        if (!isDead) {
+            div.onclick = () => {
+                game.setTarget(index)
+                renderEnemies()
+            }
+            div.style.cursor = 'pointer'
+        }
+        
+        container.appendChild(div)
+    })
+}
+
 function updateCombatUI() {
-    const p = game.player, e = game.currentEnemy
+    const p = game.player
     document.getElementById('combat-player-hp').style.width = `${(p.hp / game.getMaxHp()) * 100}%`
     document.getElementById('combat-player-hp-text').textContent = `HP: ${p.hp}/${game.getMaxHp()}`
     document.getElementById('combat-player-mana').style.width = `${(p.mana / game.getMaxMana()) * 100}%`
     document.getElementById('combat-player-mana-text').textContent = `MP: ${p.mana}/${game.getMaxMana()}`
-    if (e) {
-        document.getElementById('combat-enemy-hp').style.width = `${(e.hp / e.maxHp) * 100}%`
-        document.getElementById('combat-enemy-hp-text').textContent = `HP: ${e.hp}/${e.maxHp}`
-    }
+    
+    // Update enemies display
+    renderEnemies()
+    
     const log = document.getElementById('combat-log-modal')
     log.innerHTML = game.gameLog.slice(-6).map(e => `<p class="${e.type}">${e.message}</p>`).join('')
     log.scrollTop = log.scrollHeight
@@ -554,7 +641,7 @@ function handleCombatResult(result) {
     updateCombatUI()
     updateGameUI()
     renderCombatSpells()
-    if (result.enemyDefeated) {
+    if (result.allDefeated) {
         setTimeout(() => { hideModal('combat-modal'); renderMap() }, 800)
     } else if (result.playerDefeated) {
         setTimeout(() => { hideModal('combat-modal'); showDeathScreen() }, 800)

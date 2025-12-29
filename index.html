@@ -55,12 +55,46 @@
         </div>
     </div>
 
-    <!-- NAME INPUT -->
+    <!-- NAME INPUT & CUSTOMIZATION -->
     <div id="name-screen" class="screen hidden">
         <div class="name-container">
-            <h2>Name Your Character</h2>
+            <h2>Customize Your Character</h2>
             <p id="name-preview"></p>
             <input type="text" id="character-name" placeholder="Enter name..." maxlength="20">
+            
+            <div class="customization-section">
+                <h3>Choose Your Symbol</h3>
+                <div id="symbol-options" class="symbol-options">
+                    <button class="symbol-btn selected" data-symbol="@">@</button>
+                    <button class="symbol-btn" data-symbol="☺">☺</button>
+                    <button class="symbol-btn" data-symbol="♦">♦</button>
+                    <button class="symbol-btn" data-symbol="★">★</button>
+                    <button class="symbol-btn" data-symbol="▲">▲</button>
+                    <button class="symbol-btn" data-symbol="●">●</button>
+                    <button class="symbol-btn" data-symbol="◆">◆</button>
+                    <button class="symbol-btn" data-symbol="♠">♠</button>
+                    <button class="symbol-btn" data-symbol="♣">♣</button>
+                    <button class="symbol-btn" data-symbol="☼">☼</button>
+                </div>
+                
+                <h3>Choose Your Color</h3>
+                <div id="color-options" class="color-options">
+                    <button class="color-btn selected" data-color="#4a9eff" style="background:#4a9eff"></button>
+                    <button class="color-btn" data-color="#ff4a4a" style="background:#ff4a4a"></button>
+                    <button class="color-btn" data-color="#4aff4a" style="background:#4aff4a"></button>
+                    <button class="color-btn" data-color="#ffeb3b" style="background:#ffeb3b"></button>
+                    <button class="color-btn" data-color="#ff9800" style="background:#ff9800"></button>
+                    <button class="color-btn" data-color="#e91e63" style="background:#e91e63"></button>
+                    <button class="color-btn" data-color="#9c27b0" style="background:#9c27b0"></button>
+                    <button class="color-btn" data-color="#00bcd4" style="background:#00bcd4"></button>
+                    <button class="color-btn" data-color="#ffffff" style="background:#ffffff"></button>
+                </div>
+                
+                <div class="preview-character">
+                    Preview: <span id="character-preview" style="color:#4a9eff;font-size:24px;">@</span>
+                </div>
+            </div>
+            
             <div class="name-buttons">
                 <button id="name-back-btn" class="btn-secondary">Back</button>
                 <button id="start-game-btn" class="btn-primary">Begin Adventure</button>
@@ -191,13 +225,8 @@
                     <span id="combat-player-mana-text"></span>
                 </div>
                 <div class="vs">VS</div>
-                <div class="combatant enemy-side">
-                    <span id="combat-enemy-emoji" class="enemy-emoji"></span>
-                    <h3 id="combat-enemy-name">Enemy</h3>
-                    <div class="combat-bar enemy-bar-bg">
-                        <div id="combat-enemy-hp" class="bar-fill enemy-bar-fill"></div>
-                    </div>
-                    <span id="combat-enemy-hp-text"></span>
+                <div id="enemies-container" class="enemies-container">
+                    <!-- Enemies will be rendered here -->
                 </div>
             </div>
             <div id="combat-log-modal" class="combat-log"></div>
