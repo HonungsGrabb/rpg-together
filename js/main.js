@@ -47,6 +47,7 @@ document.getElementById('register-btn')?.addEventListener('click', async () => {
 })
 
 document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    await game.disconnectMultiplayer()
     await logout()
     showScreen('auth-screen')
 })
@@ -59,6 +60,7 @@ function showAuthMsg(msg, isError = true) {
 
 // Save Screen
 async function loadSaveScreen(userId) { 
+    await game.disconnectMultiplayer()
     showScreen('save-screen')
     const saves = await game.loadSaves(userId)
     renderSaveSlots(saves) 
@@ -98,11 +100,45 @@ function startNewGame(slot) {
 
 async function loadExistingGame(slot) { 
     if (await game.loadGame(slot)) { 
+        setupMultiplayerCallbacks()
         showScreen('game-screen')
         updateGameUI()
         renderMap()
         setupInput()
     } 
+}
+
+function setupMultiplayerCallbacks() {
+    // When other players update
+    game.multiplayer.onPlayersUpdate = (players) => {
+        if (game.world) {
+            game.world.setOtherPlayers(players)
+            renderMap()
+        }
+        updateOnlineCount(players.size)
+    }
+    
+    // When chat message received
+    game.multiplayer.onChatMessage = (messages) => {
+        renderChat(messages)
+    }
+}
+
+function updateOnlineCount(count) {
+    const el = document.getElementById('online-count')
+    if (el) el.textContent = `👥 ${count + 1}`
+}
+
+function renderChat(messages) {
+    const container = document.getElementById('chat-messages')
+    if (!container) return
+    
+    container.innerHTML = messages.slice(-20).map(msg => {
+        const cls = msg.isOwn ? 'chat-own' : 'chat-other'
+        return `<div class="chat-msg ${cls}"><span class="chat-name">${msg.name}:</span> ${msg.message}</div>`
+    }).join('')
+    
+    container.scrollTop = container.scrollHeight
 }
 
 // Character Creation
@@ -149,6 +185,7 @@ document.getElementById('start-game-btn')?.addEventListener('click', async () =>
     const name = document.getElementById('character-name').value.trim()
     if (!name) return alert('Enter a name')
     await game.createNewGame(selectedSlot, name, selectedRace, selectedClass)
+    setupMultiplayerCallbacks()
     showScreen('game-screen')
     updateGameUI()
     renderMap()
@@ -445,7 +482,22 @@ document.getElementById('btn-save-quit')?.addEventListener('click', async () => 
 
 // Input
 function setupInput() {
-    document.onkeydown = e => {
+    document.onkeydown = async e => {
+        // Check if chat is focused
+        const chatInput = document.getElementById('chat-input')
+        if (document.activeElement === chatInput) {
+            if (e.key === 'Enter') {
+                e.preventDefault()
+                const msg = chatInput.value.trim()
+                if (msg) {
+                    await game.multiplayer.sendChat(msg)
+                    chatInput.value = ''
+                }
+            }
+            if (e.key === 'Escape') chatInput.blur()
+            return
+        }
+        
         const openModals = document.querySelectorAll('.modal:not(.hidden)')
         if (openModals.length > 0) { 
             if (e.key === 'Escape') hideAllModals()
@@ -453,6 +505,13 @@ function setupInput() {
         }
         if (game.inCombat) return
         const key = e.key.toLowerCase()
+        
+        // Enter to focus chat
+        if (key === 'enter') {
+            if (chatInput) { chatInput.focus(); e.preventDefault() }
+            return
+        }
+        
         if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
             e.preventDefault()
             let dir
@@ -461,6 +520,16 @@ function setupInput() {
             else if (key === 's' || key === 'arrowdown') dir = 's'
             else if (key === 'd' || key === 'arrowright') dir = 'd'
             const result = game.move(dir)
+            
+            // Broadcast movement
+            const pos = game.inDungeon ? game.dungeon?.playerPos : game.world?.playerPos
+            if (pos) game.multiplayer.broadcastMove(pos.x, pos.y)
+            
+            // Handle area transition
+            if (result.newArea) {
+                await game.multiplayer.onAreaChange()
+            }
+            
             if (result.combat) showCombatUI()
             else if (result.dungeon) showDungeonPrompt()
             else if (result.stairs) showStairsPrompt()

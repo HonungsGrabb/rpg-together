@@ -10,11 +10,33 @@ export const WORLD_TILE_DISPLAY = {
     [WORLD_TILES.WATER]: { char: '~', class: 'tile-water' }
 }
 
+// Seeded random number generator for consistent world generation
+class SeededRandom {
+    constructor(seed) {
+        this.seed = seed
+    }
+    
+    next() {
+        this.seed = (this.seed * 1103515245 + 12345) & 0x7fffffff
+        return this.seed / 0x7fffffff
+    }
+    
+    nextInt(max) {
+        return Math.floor(this.next() * max)
+    }
+}
+
 export class WorldArea {
     constructor(width = 20, height = 15) {
         this.width = width; this.height = height; this.grid = []; this.biome = 'plains'
         this.enemies = new Map(); this.dungeonPos = null; this.playerPos = { x: 0, y: 0 }
         this.worldX = 0; this.worldY = 0
+        this.otherPlayers = new Map()
+    }
+
+    // Create seed from world coordinates - same coords = same world for all players
+    getSeed(worldX, worldY) {
+        return Math.abs(worldX * 73856093 ^ worldY * 19349663) + 1
     }
 
     generateCastle() {
@@ -37,37 +59,69 @@ export class WorldArea {
         this.worldX = worldX; this.worldY = worldY; this.enemies.clear(); this.dungeonPos = null
         const dist = Math.abs(worldX) + Math.abs(worldY)
         if (dist === 0) return this.generateCastle()
-        const biomes = ['plains', 'forest', 'mountains']; this.biome = biomes[Math.abs(worldX * 1000 + worldY) % biomes.length]
+        
+        // Use seeded random for consistent generation across all players
+        const rng = new SeededRandom(this.getSeed(worldX, worldY))
+        
+        const biomes = ['plains', 'forest', 'mountains']
+        this.biome = biomes[Math.abs(worldX * 1000 + worldY) % biomes.length]
+        
         this.grid = Array.from({ length: this.height }, () => Array(this.width).fill(WORLD_TILES.GROUND))
-        if (this.biome === 'forest') this.addTrees(0.15)
-        else if (this.biome === 'mountains') this.addRocks(0.1)
-        if (Math.random() < 0.1 + dist * 0.05) this.placeDungeon()
-        this.placeEnemies(2 + Math.floor(dist / 2) + Math.floor(Math.random() * 3), playerLevel)
+        
+        if (this.biome === 'forest') this.addTrees(0.15, rng)
+        else if (this.biome === 'mountains') this.addRocks(0.1, rng)
+        
+        // Dungeon placement is deterministic
+        if (rng.next() < 0.1 + dist * 0.05) this.placeDungeon(rng)
+        
+        // Enemy placement is deterministic based on seed
+        this.placeEnemies(2 + Math.floor(dist / 2) + rng.nextInt(3), playerLevel, rng)
+        
         return this
     }
 
-    addTrees(density) { for (let y = 1; y < this.height - 1; y++) for (let x = 1; x < this.width - 1; x++) if (Math.random() < density) this.grid[y][x] = WORLD_TILES.TREE }
-    addRocks(density) { for (let y = 1; y < this.height - 1; y++) for (let x = 1; x < this.width - 1; x++) if (Math.random() < density) this.grid[y][x] = WORLD_TILES.WALL }
+    addTrees(density, rng) { 
+        for (let y = 1; y < this.height - 1; y++) 
+            for (let x = 1; x < this.width - 1; x++) 
+                if (rng.next() < density) this.grid[y][x] = WORLD_TILES.TREE 
+    }
+    
+    addRocks(density, rng) { 
+        for (let y = 1; y < this.height - 1; y++) 
+            for (let x = 1; x < this.width - 1; x++) 
+                if (rng.next() < density) this.grid[y][x] = WORLD_TILES.WALL 
+    }
 
-    placeDungeon() {
+    placeDungeon(rng) {
         let attempts = 0
         while (attempts < 50) {
-            const x = 2 + Math.floor(Math.random() * (this.width - 4)), y = 2 + Math.floor(Math.random() * (this.height - 4))
-            if (this.grid[y][x] === WORLD_TILES.GROUND) { this.grid[y][x] = WORLD_TILES.DUNGEON; this.dungeonPos = { x, y }; return }
+            const x = 2 + rng.nextInt(this.width - 4)
+            const y = 2 + rng.nextInt(this.height - 4)
+            if (this.grid[y][x] === WORLD_TILES.GROUND) { 
+                this.grid[y][x] = WORLD_TILES.DUNGEON
+                this.dungeonPos = { x, y }
+                return 
+            }
             attempts++
         }
     }
 
-    placeEnemies(count, playerLevel) {
+    placeEnemies(count, playerLevel, rng) {
         let placed = 0, attempts = 0
         while (placed < count && attempts < 100) {
-            const x = 1 + Math.floor(Math.random() * (this.width - 2)), y = 1 + Math.floor(Math.random() * (this.height - 2))
+            const x = 1 + rng.nextInt(this.width - 2)
+            const y = 1 + rng.nextInt(this.height - 2)
             if (this.grid[y][x] === WORLD_TILES.GROUND && !this.enemies.has(`${x},${y}`)) {
-                this.enemies.set(`${x},${y}`, scaleEnemy(getOverworldEnemy(), Math.max(1, playerLevel - 1)))
-                this.grid[y][x] = WORLD_TILES.ENEMY; placed++
+                this.enemies.set(`${x},${y}`, scaleEnemy(getOverworldEnemy(rng), Math.max(1, playerLevel - 1)))
+                this.grid[y][x] = WORLD_TILES.ENEMY
+                placed++
             }
             attempts++
         }
+    }
+
+    setOtherPlayers(players) {
+        this.otherPlayers = players
     }
 
     isWalkable(x, y) { return x >= 0 && x < this.width && y >= 0 && y < this.height && ![WORLD_TILES.WALL, WORLD_TILES.TREE, WORLD_TILES.WATER].includes(this.grid[y][x]) }
@@ -110,12 +164,33 @@ export class WorldArea {
         for (let y = 0; y < this.height; y++) {
             html += '<div class="grid-row">'
             for (let x = 0; x < this.width; x++) {
-                const isPlayer = x === this.playerPos.x && y === this.playerPos.y, tile = this.grid[y][x], display = WORLD_TILE_DISPLAY[tile]
-                let tileClass = 'tile ' + display.class, tileChar = display.char
+                const isPlayer = x === this.playerPos.x && y === this.playerPos.y
+                const tile = this.grid[y][x]
+                const display = WORLD_TILE_DISPLAY[tile]
+                let tileClass = 'tile ' + display.class
+                let tileChar = display.char
+                
+                // Check for other players at this position
+                let otherPlayerHere = null
+                for (const [id, player] of this.otherPlayers) {
+                    if (player.pos_x === x && player.pos_y === y) {
+                        otherPlayerHere = player
+                        break
+                    }
+                }
+                
                 if (this.biome === 'castle' && tile === WORLD_TILES.GROUND) tileChar = '░'
                 else if (tile === WORLD_TILES.GROUND) tileChar = biomeInfo.groundChar
-                if (isPlayer) { tileClass += ' tile-player'; tileChar = '@' }
-                html += `<div class="${tileClass}">${tileChar}</div>`
+                
+                if (isPlayer) { 
+                    tileClass += ' tile-player'
+                    tileChar = '@' 
+                } else if (otherPlayerHere) {
+                    tileClass += ' tile-other-player'
+                    tileChar = '☺'
+                }
+                
+                html += `<div class="${tileClass}" title="${otherPlayerHere ? otherPlayerHere.player_name : ''}">${tileChar}</div>`
             }
             html += '</div>'
         }

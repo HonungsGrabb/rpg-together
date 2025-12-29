@@ -79,6 +79,7 @@
                 <span id="floor-display"></span>
             </div>
             <div class="header-right">
+                <span id="online-count">👥 1</span>
                 <span id="gold-display"></span>
                 <button id="menu-btn">☰</button>
             </div>
@@ -134,10 +135,16 @@
                 <div class="controls-hint">WASD / Arrow Keys to move</div>
             </section>
 
-            <!-- RIGHT PANEL: Inventory & Log -->
+            <!-- RIGHT PANEL: Inventory & Log & Chat -->
             <section class="inventory-section">
                 <h3>🎒 Inventory</h3>
                 <div id="inventory-panel" class="inventory-grid"></div>
+                
+                <h3>💬 Chat</h3>
+                <div id="chat-container" class="chat-container">
+                    <div id="chat-messages" class="chat-messages"></div>
+                    <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="100">
+                </div>
                 
                 <h3>📜 Log</h3>
                 <div id="game-log" class="game-log"></div>

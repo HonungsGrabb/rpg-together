@@ -2,6 +2,7 @@ import { supabase } from './supabase-client.js'
 import { RACES, CLASSES, ITEMS, SPELLS, EQUIPMENT_SLOT_IDS, getLootDrop, generateRandomItem } from './data.js'
 import { Dungeon } from './dungeon.js'
 import { WorldArea } from './world.js'
+import { Multiplayer } from './multiplayer.js'
 
 const BASE_STATS = { hp: 100, mana: 50, physicalPower: 5, magicPower: 5, defense: 3, magicResist: 3, speed: 5 }
 
@@ -11,6 +12,7 @@ export class Game {
         this.dungeon = null; this.world = null; this.inDungeon = false; this.inCombat = false
         this.currentEnemy = null; this.enemyPosition = null; this.combatBuffs = []; this.combatDebuffs = []
         this.enemyDot = null; this.gameLog = []; this.generatedItems = {}
+        this.multiplayer = new Multiplayer(this)
     }
 
     async loadSaves(userId) {
@@ -48,6 +50,10 @@ export class Game {
         this.generatedItems = this.player.generatedItems || {}
         this.world = new WorldArea(20, 15); this.world.generate(this.player.worldX, this.player.worldY, this.player.level)
         this.log(this.player.worldX === 0 && this.player.worldY === 0 ? 'Castle courtyard. Explore to find dungeons!' : `You are in the ${this.world.biome}.`, 'info')
+        
+        // Connect multiplayer
+        await this.multiplayer.connect()
+        
         return true
     }
 
@@ -55,6 +61,11 @@ export class Game {
         if (!this.currentSlot || !this.player) return
         this.player.generatedItems = this.generatedItems
         await supabase.from('save_slots').update({ player_data: this.player, updated_at: new Date().toISOString() }).eq('user_id', this.userId).eq('slot', this.currentSlot)
+        await this.multiplayer.updatePresence()
+    }
+
+    async disconnectMultiplayer() {
+        await this.multiplayer.disconnect()
     }
 
     async deleteGame(slot) { return !(await supabase.from('save_slots').delete().eq('user_id', this.userId).eq('slot', slot)).error }

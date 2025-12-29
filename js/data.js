@@ -237,14 +237,16 @@ export function getEnemyForFloor(floor) {
     return available[Math.floor(Math.random() * available.length)]
 }
 
-export function getOverworldEnemy() {
+export function getOverworldEnemy(rng = null) {
     const enemies = Object.values(OVERWORLD_ENEMIES)
-    return enemies[Math.floor(Math.random() * enemies.length)]
+    const index = rng ? rng.nextInt(enemies.length) : Math.floor(Math.random() * enemies.length)
+    return enemies[index]
 }
 
-export function scaleEnemy(enemy, floor = 1) {
+export function scaleEnemy(enemy, floor = 1, rng = null) {
     const scaling = 1 + (floor - 1) * 0.12
-    return { ...enemy, hp: Math.floor(enemy.baseHp * scaling), maxHp: Math.floor(enemy.baseHp * scaling), physicalDamage: Math.floor(enemy.basePhysicalDamage * scaling), magicDamage: Math.floor(enemy.baseMagicDamage * scaling), defense: Math.floor(enemy.baseDefense * scaling), magicResist: Math.floor(enemy.baseMagicResist * scaling), speed: enemy.baseSpeed, xp: Math.floor(enemy.xp * scaling), gold: Math.floor((enemy.gold[0] + Math.random() * (enemy.gold[1] - enemy.gold[0])) * scaling) }
+    const goldRoll = rng ? rng.next() : Math.random()
+    return { ...enemy, hp: Math.floor(enemy.baseHp * scaling), maxHp: Math.floor(enemy.baseHp * scaling), physicalDamage: Math.floor(enemy.basePhysicalDamage * scaling), magicDamage: Math.floor(enemy.baseMagicDamage * scaling), defense: Math.floor(enemy.baseDefense * scaling), magicResist: Math.floor(enemy.baseMagicResist * scaling), speed: enemy.baseSpeed, xp: Math.floor(enemy.xp * scaling), gold: Math.floor((enemy.gold[0] + goldRoll * (enemy.gold[1] - enemy.gold[0])) * scaling) }
 }
 
 export function getLootDrop(floor, isChest = false) {
