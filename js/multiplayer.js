@@ -25,10 +25,10 @@ export class Multiplayer {
     async connect() {
         if (!this.game.player || !this.game.userId) return
 
-        // Register/update our presence in the database FIRST
+        // Register/update our presence in the database
         await this.updatePresence()
 
-        // Set up realtime channel for broadcasts (faster than DB subscriptions)
+        // Set up realtime channel for broadcasts
         this.channel = supabase.channel('game-world', {
             config: { broadcast: { self: false } }
         })
@@ -98,31 +98,20 @@ export class Multiplayer {
             }
         })
 
-        // Wait for channel to be fully subscribed before continuing
-        await this.channel.subscribe((status) => {
-            console.log('Channel status:', status)
-        })
+        await this.channel.subscribe()
 
-        // Small delay to ensure subscription is active
-        await new Promise(resolve => setTimeout(resolve, 500))
+        // Announce we joined
+        this.broadcastJoin()
 
         // Load other players in our area
         await this.loadPlayersInArea()
         
-        // Load existing party if any
-        await this.loadExistingParty()
-        
-        // Load pending invites
-        await this.loadPendingInvites()
+        // Load party data (non-blocking, won't affect multiplayer if fails)
+        this.loadExistingParty().catch(e => console.log('Party load error:', e))
+        this.loadPendingInvites().catch(e => console.log('Invites load error:', e))
 
-        // NOW announce we joined (after everything is set up)
-        this.broadcastJoin()
-
-        // Set up periodic presence updates (every 15 seconds)
-        this.presenceInterval = setInterval(() => this.updatePresence(), 15000)
-
-        // Refresh other players periodically (every 10 seconds)
-        this.refreshInterval = setInterval(() => this.loadPlayersInArea(), 10000)
+        // Set up periodic presence updates
+        this.presenceInterval = setInterval(() => this.updatePresence(), 30000)
 
         // Clean up old players periodically
         this.cleanupInterval = setInterval(() => this.cleanupOldPlayers(), 60000)
@@ -138,7 +127,6 @@ export class Multiplayer {
         }
 
         if (this.presenceInterval) clearInterval(this.presenceInterval)
-        if (this.refreshInterval) clearInterval(this.refreshInterval)
         if (this.cleanupInterval) clearInterval(this.cleanupInterval)
 
         // Leave party if in one
@@ -171,49 +159,33 @@ export class Multiplayer {
             last_seen: new Date().toISOString()
         }
 
-        const { error } = await supabase.from('online_players').upsert(data, { onConflict: 'user_id' })
-        
-        if (error) {
-            console.error('Error updating presence:', error)
-        } else {
-            console.log('Presence updated:', data.player_name, 'at', data.world_x, data.world_y)
-        }
+        await supabase.from('online_players').upsert(data, { onConflict: 'user_id' })
     }
 
     async loadPlayersInArea() {
         const p = this.game.player
         if (!p) return
 
-        // Query all online players (increased time window to 5 minutes)
         let query = supabase
             .from('online_players')
             .select('*')
             .neq('user_id', this.game.userId)
-            .gt('last_seen', new Date(Date.now() - 300000).toISOString()) // Last 5 minutes
+            .gt('last_seen', new Date(Date.now() - 120000).toISOString()) // Last 2 minutes
 
         if (this.game.inDungeon) {
-            // In dungeon - only show players on same floor
             query = query
                 .eq('in_dungeon', true)
                 .eq('dungeon_floor', p.dungeonFloor)
                 .eq('world_x', p.worldX)
                 .eq('world_y', p.worldY)
         } else {
-            // In overworld - show players in same area
             query = query
                 .eq('in_dungeon', false)
                 .eq('world_x', p.worldX)
                 .eq('world_y', p.worldY)
         }
 
-        const { data, error } = await query
-
-        if (error) {
-            console.error('Error loading players:', error)
-            return
-        }
-
-        console.log('Loaded players in area:', data?.length || 0, data)
+        const { data } = await query
 
         this.otherPlayers.clear()
         if (data) {
@@ -229,53 +201,42 @@ export class Multiplayer {
         if (!this.channel) return
 
         const p = this.game.player
-        const payload = {
-            userId: this.game.userId,
-            name: p.name,
-            race: p.race,
-            class: p.class,
-            level: p.level,
-            worldX: p.worldX,
-            worldY: p.worldY,
-            x,
-            y,
-            inDungeon: this.game.inDungeon,
-            dungeonFloor: p.dungeonFloor
-        }
-        
         this.channel.send({
             type: 'broadcast',
             event: 'player-move',
-            payload
+            payload: {
+                userId: this.game.userId,
+                name: p.name,
+                race: p.race,
+                class: p.class,
+                level: p.level,
+                worldX: p.worldX,
+                worldY: p.worldY,
+                x,
+                y,
+                inDungeon: this.game.inDungeon,
+                dungeonFloor: p.dungeonFloor
+            }
         })
-        
-        // Also update our presence in DB periodically (every 5 moves or so handled by interval)
     }
 
     broadcastJoin() {
-        if (!this.channel) {
-            console.log('Cannot broadcast join - no channel')
-            return
-        }
+        if (!this.channel) return
 
         const p = this.game.player
-        const payload = {
-            userId: this.game.userId,
-            name: p.name,
-            race: p.race,
-            class: p.class,
-            level: p.level,
-            worldX: p.worldX,
-            worldY: p.worldY,
-            inDungeon: this.game.inDungeon
-        }
-        
-        console.log('Broadcasting join:', payload)
-        
         this.channel.send({
             type: 'broadcast',
             event: 'player-join',
-            payload
+            payload: {
+                userId: this.game.userId,
+                name: p.name,
+                race: p.race,
+                class: p.class,
+                level: p.level,
+                worldX: p.worldX,
+                worldY: p.worldY,
+                inDungeon: this.game.inDungeon
+            }
         })
     }
 
@@ -383,13 +344,9 @@ export class Multiplayer {
 
     handlePlayerJoin(payload) {
         const p = this.game.player
-        console.log('Player join broadcast received:', payload)
-        
-        // Always reload players from DB when someone joins our area
         if (payload.worldX === p.worldX && payload.worldY === p.worldY && payload.inDungeon === this.game.inDungeon) {
             this.game.log(`${payload.name} entered the area`, 'info')
-            // Delay slightly to ensure their presence is in DB
-            setTimeout(() => this.loadPlayersInArea(), 500)
+            this.loadPlayersInArea()
         }
     }
 

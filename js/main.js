@@ -600,12 +600,20 @@ function setupInput() {
 
 // Init
 onAuthChange(async (event, session) => { 
+    console.log('Auth state changed:', event)
     if (session?.user) await loadSaveScreen(session.user.id)
     else { await game.disconnectMultiplayer(); showScreen('auth-screen') }
 })
+
 async function init() { 
-    const session = await getSession()
-    if (session?.user) await loadSaveScreen(session.user.id)
-    else showScreen('auth-screen')
+    try {
+        const session = await getSession()
+        console.log('Initial session check:', session ? 'logged in' : 'not logged in')
+        if (session?.user) await loadSaveScreen(session.user.id)
+        else showScreen('auth-screen')
+    } catch (e) {
+        console.error('Init error:', e)
+        showScreen('auth-screen')
+    }
 }
 init()
