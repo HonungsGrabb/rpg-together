@@ -183,8 +183,7 @@ export const SPELLS = {
 // Generate scrolls
 export const SCROLLS = {}
 for (const [id, spell] of Object.entries(SPELLS)) {
-    const classReq = spell.class === 'all' ? 'Any Class' : CLASSES[spell.class]?.name || spell.class
-    SCROLLS[`scroll_${id}`] = { id: `scroll_${id}`, name: `Scroll: ${spell.name}`, type: 'scroll', emoji: '📜', description: `Learn ${spell.name}. Requires: Level ${spell.levelReq}, ${classReq}.`, spellId: id, tier: Math.ceil(spell.levelReq / 2), rarity: 'uncommon' }
+    SCROLLS[`scroll_${id}`] = { id: `scroll_${id}`, name: `Scroll: ${spell.name}`, type: 'scroll', emoji: '📜', description: `Learn ${spell.name}. Req Lv${spell.levelReq}.`, spellId: id, tier: Math.ceil(spell.levelReq / 2), rarity: 'uncommon' }
 }
 Object.assign(ITEMS, SCROLLS)
 
