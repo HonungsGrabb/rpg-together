@@ -35,7 +35,7 @@ export class Game {
             baseSpeed: BASE_STATS.speed + race.bonuses.speed + cls.bonuses.speed,
             gold: 50, dungeonFloor: 0, worldX: 0, worldY: 0,
             equipment: { weapon: cls.startingWeapon, offhand: null, helmet: null, chest: null, leggings: null, boots: null, amulet: null, ring1: null, ring2: null },
-            inventory: ['health_potion', 'health_potion', 'mana_potion'],
+            inventory: ['health_potion', 'health_potion', 'mana_potion', 'warp_scroll'],
             learnedSpells: [], generatedItems: {},
             stats: { enemiesKilled: 0, dungeonsCleared: 0, floorsExplored: 0, totalGold: 50 }
         }
@@ -183,14 +183,12 @@ export class Game {
     }
 
     executePlayerAttack(result) {
+        // Normal attack is PHYSICAL ONLY - no magic damage from weapons
         const wpnDmg = this.getWeaponDamage()
         const physRaw = wpnDmg.physical + this.getPhysicalPower() * 0.5
-        const magRaw = wpnDmg.magic + this.getMagicPower() * 0.5
         const physDmg = this.calculatePhysicalDamage(physRaw, this.currentEnemy.defense)
-        const magDmg = magRaw > 0 ? this.calculateMagicDamage(magRaw, this.currentEnemy.magicResist) : 0
-        const totalDmg = physDmg + magDmg
-        this.currentEnemy.hp -= totalDmg; result.playerDamage = totalDmg
-        this.log(`You deal ${totalDmg} damage!${magDmg > 0 ? ` (${physDmg} phys + ${magDmg} magic)` : ''}`, 'combat')
+        this.currentEnemy.hp -= physDmg; result.playerDamage = physDmg
+        this.log(`You deal ${physDmg} physical damage!`, 'combat')
         if (this.currentEnemy.hp <= 0) { result.enemyDefeated = true; this.endCombat(true) }
         return result
     }
@@ -211,17 +209,32 @@ export class Game {
         this.player.mana -= spell.manaCost; this.log(`Cast ${spell.emoji} ${spell.name}!`, 'combat')
         let result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, playerDefeated: false }
         const eff = spell.effect
-        let totalDmg = 0
+        const wpnDmg = this.getWeaponDamage()
+        let physDmg = 0, magDmg = 0
+        
+        // Physical spells scale with physical power
         if (eff.basePhysical) {
             const raw = eff.basePhysical + this.getPhysicalPower() * (eff.physicalScaling || 1)
             const hits = eff.hits || 1
-            for (let i = 0; i < hits; i++) totalDmg += this.calculatePhysicalDamage(raw, this.currentEnemy.defense)
+            for (let i = 0; i < hits; i++) physDmg += this.calculatePhysicalDamage(raw, this.currentEnemy.defense)
         }
+        
+        // Magic spells scale with magic power AND weapon magic damage
         if (eff.baseMagic) {
-            const raw = eff.baseMagic + this.getMagicPower() * (eff.magicScaling || 1)
-            totalDmg += this.calculateMagicDamage(raw, this.currentEnemy.magicResist)
+            const raw = eff.baseMagic + this.getMagicPower() * (eff.magicScaling || 1) + wpnDmg.magic * 0.5
+            magDmg = this.calculateMagicDamage(raw, this.currentEnemy.magicResist)
         }
-        if (totalDmg > 0) { this.currentEnemy.hp -= totalDmg; result.playerDamage = totalDmg; this.log(`Deals ${totalDmg} damage!`, 'combat') }
+        
+        const totalDmg = physDmg + magDmg
+        if (totalDmg > 0) { 
+            this.currentEnemy.hp -= totalDmg
+            result.playerDamage = totalDmg
+            if (physDmg > 0 && magDmg > 0) {
+                this.log(`Deals ${totalDmg} damage! (${physDmg} phys + ${magDmg} magic)`, 'combat')
+            } else {
+                this.log(`Deals ${totalDmg} ${physDmg > 0 ? 'physical' : 'magic'} damage!`, 'combat')
+            }
+        }
         if (eff.baseHeal) { const heal = Math.floor(eff.baseHeal + this.getMagicPower() * (eff.healScaling || 1)); const old = this.player.hp; this.player.hp = Math.min(this.getMaxHp(), this.player.hp + heal); this.log(`Healed ${this.player.hp - old} HP!`, 'heal') }
         if (eff.buff) { this.combatBuffs.push({ ...eff.buff }); this.log(`Buff for ${eff.buff.turns} turns!`, 'info') }
         if (eff.debuff) { this.combatDebuffs.push({ ...eff.debuff }); this.log(`Enemy debuffed!`, 'info') }
@@ -289,7 +302,17 @@ export class Game {
         if (item.type === 'consumable') {
             if (item.effect.heal) { const old = this.player.hp; this.player.hp = Math.min(this.getMaxHp(), this.player.hp + item.effect.heal); this.log(`Used ${item.name}, healed ${this.player.hp - old} HP`, 'heal') }
             if (item.effect.restoreMana) { const old = this.player.mana; this.player.mana = Math.min(this.getMaxMana(), this.player.mana + item.effect.restoreMana); this.log(`Used ${item.name}, restored ${this.player.mana - old} mana`, 'heal') }
-            this.player.inventory.splice(index, 1); this.saveGame(); return true
+            if (item.effect.warp) { 
+                // Teleport to castle (0,0)
+                this.player.worldX = 0
+                this.player.worldY = 0
+                this.inDungeon = false
+                this.dungeon = null
+                this.world = new WorldArea(20, 15)
+                this.world.generate(0, 0, this.player.level)
+                this.log(`🌀 Warped back to the castle!`, 'info')
+            }
+            this.player.inventory.splice(index, 1); this.saveGame(); return item.effect.warp ? 'warp' : true
         }
         if (item.type === 'scroll') return this.learnSpell(index)
         return false

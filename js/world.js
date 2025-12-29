@@ -169,6 +169,7 @@ export class WorldArea {
                 const display = WORLD_TILE_DISPLAY[tile]
                 let tileClass = 'tile ' + display.class
                 let tileChar = display.char
+                let dataAttr = ''
                 
                 // Check for other players at this position
                 let otherPlayerHere = null
@@ -188,9 +189,10 @@ export class WorldArea {
                 } else if (otherPlayerHere) {
                     tileClass += ' tile-other-player'
                     tileChar = '☺'
+                    dataAttr = `data-player-id="${otherPlayerHere.user_id}" data-player-name="${otherPlayerHere.player_name}"`
                 }
                 
-                html += `<div class="${tileClass}" title="${otherPlayerHere ? otherPlayerHere.player_name : ''}">${tileChar}</div>`
+                html += `<div class="${tileClass}" ${dataAttr} title="${otherPlayerHere ? otherPlayerHere.player_name : ''}">${tileChar}</div>`
             }
             html += '</div>'
         }

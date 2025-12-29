@@ -93,6 +93,12 @@
                 
                 <h3>✨ Skills</h3>
                 <div id="skills-panel" class="skills-list"></div>
+                
+                <h3>👥 Party <span id="party-status"></span></h3>
+                <div id="party-panel" class="party-panel">
+                    <p class="no-party">Not in a party</p>
+                </div>
+                <div id="party-invites" class="party-invites"></div>
             </section>
 
             <!-- CENTER: Map & Stats -->
@@ -256,6 +262,14 @@
             <button id="btn-resume" class="btn-primary">Resume</button>
             <button id="btn-save-quit" class="btn-secondary">Save & Quit</button>
         </div>
+    </div>
+
+    <!-- PLAYER CONTEXT MENU -->
+    <div id="player-menu" class="player-menu hidden">
+        <div class="player-menu-header">
+            <span id="menu-player-name">Player</span>
+        </div>
+        <button id="btn-invite-party" class="btn-primary">Invite to Party</button>
     </div>
 
     <script type="module" src="js/main.js"></script>

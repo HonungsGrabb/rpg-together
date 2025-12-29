@@ -8,6 +8,12 @@ export class Multiplayer {
         this.chatMessages = []
         this.onPlayersUpdate = null
         this.onChatMessage = null
+        
+        // Party system
+        this.party = null
+        this.pendingInvites = []
+        this.onPartyUpdate = null
+        this.onPartyInvite = null
     }
 
     async connect() {
@@ -42,6 +48,19 @@ export class Multiplayer {
             this.handlePlayerLeave(payload)
         })
 
+        // Party broadcasts
+        this.channel.on('broadcast', { event: 'party-invite' }, ({ payload }) => {
+            this.handlePartyInvite(payload)
+        })
+
+        this.channel.on('broadcast', { event: 'party-response' }, ({ payload }) => {
+            this.handlePartyResponse(payload)
+        })
+
+        this.channel.on('broadcast', { event: 'party-update' }, ({ payload }) => {
+            this.handlePartyUpdate(payload)
+        })
+
         await this.channel.subscribe()
 
         // Announce we joined
@@ -49,6 +68,10 @@ export class Multiplayer {
 
         // Load other players in our area
         await this.loadPlayersInArea()
+
+        // Load party data
+        await this.loadExistingParty()
+        await this.loadPendingInvites()
 
         // Set up periodic presence updates
         this.presenceInterval = setInterval(() => this.updatePresence(), 30000)
@@ -68,6 +91,11 @@ export class Multiplayer {
 
         if (this.presenceInterval) clearInterval(this.presenceInterval)
         if (this.cleanupInterval) clearInterval(this.cleanupInterval)
+
+        // Leave party if in one
+        if (this.party) {
+            await this.leaveParty()
+        }
 
         // Remove from online players
         if (this.game.userId) {
@@ -303,5 +331,296 @@ export class Multiplayer {
         await this.updatePresence()
         await this.loadPlayersInArea()
         this.broadcastJoin()
+    }
+
+    // ==================== PARTY SYSTEM ====================
+
+    async loadExistingParty() {
+        try {
+            const { data: membership } = await supabase
+                .from('party_members')
+                .select('party_id')
+                .eq('user_id', this.game.userId)
+                .single()
+
+            if (membership?.party_id) {
+                await this.loadPartyData(membership.party_id)
+            }
+        } catch (e) {
+            // No party
+        }
+    }
+
+    async loadPartyData(partyId) {
+        const { data: party } = await supabase
+            .from('parties')
+            .select('*')
+            .eq('id', partyId)
+            .single()
+
+        if (!party) {
+            this.party = null
+            return
+        }
+
+        const { data: members } = await supabase
+            .from('party_members')
+            .select('*')
+            .eq('party_id', partyId)
+
+        // Get online status for each member
+        const memberIds = members?.map(m => m.user_id) || []
+        const { data: onlineData } = await supabase
+            .from('online_players')
+            .select('user_id, hp, max_hp')
+            .in('user_id', memberIds)
+
+        const onlineMap = new Map(onlineData?.map(o => [o.user_id, o]) || [])
+
+        this.party = {
+            id: party.id,
+            leaderId: party.leader_id,
+            members: members?.map(m => ({
+                userId: m.user_id,
+                name: m.player_name,
+                isOnline: onlineMap.has(m.user_id),
+                hp: onlineMap.get(m.user_id)?.hp || 0,
+                maxHp: onlineMap.get(m.user_id)?.max_hp || 100
+            })) || []
+        }
+
+        if (this.onPartyUpdate) this.onPartyUpdate(this.party)
+    }
+
+    async loadPendingInvites() {
+        try {
+            const { data } = await supabase
+                .from('party_invites')
+                .select('*')
+                .eq('to_user_id', this.game.userId)
+                .eq('status', 'pending')
+
+            this.pendingInvites = data || []
+            if (this.onPartyInvite && this.pendingInvites.length > 0) {
+                this.onPartyInvite(this.pendingInvites)
+            }
+        } catch (e) {
+            this.pendingInvites = []
+        }
+    }
+
+    async sendPartyInvite(targetUserId, targetName) {
+        // Create party if we don't have one
+        if (!this.party) {
+            await this.createParty()
+        }
+
+        // Check if already in party
+        const { data: existing } = await supabase
+            .from('party_members')
+            .select('id')
+            .eq('user_id', targetUserId)
+            .single()
+
+        if (existing) {
+            this.game.log(`${targetName} is already in a party`, 'info')
+            return false
+        }
+
+        // Create invite
+        await supabase.from('party_invites').upsert({
+            from_user_id: this.game.userId,
+            to_user_id: targetUserId,
+            from_name: this.game.player.name,
+            party_id: this.party.id,
+            status: 'pending'
+        }, { onConflict: 'from_user_id,to_user_id' })
+
+        // Broadcast invite
+        this.channel?.send({
+            type: 'broadcast',
+            event: 'party-invite',
+            payload: {
+                fromUserId: this.game.userId,
+                fromName: this.game.player.name,
+                toUserId: targetUserId,
+                partyId: this.party.id
+            }
+        })
+
+        this.game.log(`Sent party invite to ${targetName}`, 'info')
+        return true
+    }
+
+    async respondToInvite(inviteId, accept) {
+        const invite = this.pendingInvites.find(i => i.id === inviteId)
+        if (!invite) return
+
+        if (accept) {
+            // Leave current party if in one
+            if (this.party) {
+                await this.leaveParty()
+            }
+
+            // Join the party
+            await supabase.from('party_members').insert({
+                party_id: invite.party_id,
+                user_id: this.game.userId,
+                player_name: this.game.player.name
+            })
+
+            // Update invite status
+            await supabase.from('party_invites')
+                .update({ status: 'accepted' })
+                .eq('id', inviteId)
+
+            // Load party data
+            await this.loadPartyData(invite.party_id)
+
+            // Broadcast join
+            this.channel?.send({
+                type: 'broadcast',
+                event: 'party-response',
+                payload: {
+                    accepted: true,
+                    partyId: invite.party_id,
+                    userId: this.game.userId,
+                    userName: this.game.player.name
+                }
+            })
+
+            this.game.log(`Joined ${invite.from_name}'s party!`, 'info')
+        } else {
+            // Decline
+            await supabase.from('party_invites')
+                .update({ status: 'declined' })
+                .eq('id', inviteId)
+
+            this.channel?.send({
+                type: 'broadcast',
+                event: 'party-response',
+                payload: {
+                    accepted: false,
+                    fromUserId: invite.from_user_id,
+                    userId: this.game.userId,
+                    userName: this.game.player.name
+                }
+            })
+        }
+
+        // Remove from pending
+        this.pendingInvites = this.pendingInvites.filter(i => i.id !== inviteId)
+        if (this.onPartyInvite) this.onPartyInvite(this.pendingInvites)
+    }
+
+    async createParty() {
+        const { data: party } = await supabase
+            .from('parties')
+            .insert({ leader_id: this.game.userId })
+            .select()
+            .single()
+
+        if (party) {
+            await supabase.from('party_members').insert({
+                party_id: party.id,
+                user_id: this.game.userId,
+                player_name: this.game.player.name
+            })
+
+            await this.loadPartyData(party.id)
+        }
+
+        return party
+    }
+
+    async leaveParty() {
+        if (!this.party) return
+
+        const partyId = this.party.id
+        const wasLeader = this.party.leaderId === this.game.userId
+
+        // Remove self from party
+        await supabase.from('party_members')
+            .delete()
+            .eq('party_id', partyId)
+            .eq('user_id', this.game.userId)
+
+        // If leader, transfer leadership or delete party
+        if (wasLeader) {
+            const { data: remainingMembers } = await supabase
+                .from('party_members')
+                .select('user_id')
+                .eq('party_id', partyId)
+
+            if (remainingMembers && remainingMembers.length > 0) {
+                // Transfer to first remaining member
+                await supabase.from('parties')
+                    .update({ leader_id: remainingMembers[0].user_id })
+                    .eq('id', partyId)
+            } else {
+                // Delete empty party
+                await supabase.from('parties').delete().eq('id', partyId)
+                await supabase.from('party_invites').delete().eq('party_id', partyId)
+            }
+        }
+
+        // Broadcast leave
+        this.channel?.send({
+            type: 'broadcast',
+            event: 'party-update',
+            payload: {
+                type: 'leave',
+                partyId,
+                userId: this.game.userId,
+                userName: this.game.player.name
+            }
+        })
+
+        this.party = null
+        if (this.onPartyUpdate) this.onPartyUpdate(null)
+        this.game.log('Left the party', 'info')
+    }
+
+    handlePartyInvite(payload) {
+        if (payload.toUserId !== this.game.userId) return
+
+        this.pendingInvites.push({
+            id: `temp_${Date.now()}`,
+            from_user_id: payload.fromUserId,
+            from_name: payload.fromName,
+            party_id: payload.partyId,
+            status: 'pending'
+        })
+
+        if (this.onPartyInvite) this.onPartyInvite(this.pendingInvites)
+        this.game.log(`${payload.fromName} invited you to their party!`, 'info')
+    }
+
+    handlePartyResponse(payload) {
+        if (payload.accepted && this.party && payload.partyId === this.party.id) {
+            // Someone joined our party
+            this.loadPartyData(this.party.id)
+            this.game.log(`${payload.userName} joined the party!`, 'info')
+        } else if (!payload.accepted && payload.fromUserId === this.game.userId) {
+            // Our invite was declined
+            this.game.log(`${payload.userName} declined your party invite`, 'info')
+        }
+    }
+
+    handlePartyUpdate(payload) {
+        if (!this.party || payload.partyId !== this.party.id) return
+
+        if (payload.type === 'leave') {
+            this.game.log(`${payload.userName} left the party`, 'info')
+            this.loadPartyData(this.party.id)
+        }
+    }
+
+    isInParty() {
+        return this.party !== null
+    }
+
+    isPartyLeader() {
+        return this.party && this.party.leaderId === this.game.userId
     }
 }

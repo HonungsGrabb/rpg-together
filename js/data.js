@@ -156,7 +156,8 @@ export const ITEMS = {
     large_health_potion: { id: 'large_health_potion', name: 'Large Health Potion', type: 'consumable', emoji: '🧪', description: 'Restores 60 HP.', effect: { heal: 60 }, tier: 2, rarity: 'common' },
     mana_potion: { id: 'mana_potion', name: 'Mana Potion', type: 'consumable', emoji: '💧', description: 'Restores 25 mana.', effect: { restoreMana: 25 }, tier: 1, rarity: 'common' },
     large_mana_potion: { id: 'large_mana_potion', name: 'Large Mana Potion', type: 'consumable', emoji: '💧', description: 'Restores 50 mana.', effect: { restoreMana: 50 }, tier: 2, rarity: 'common' },
-    elixir: { id: 'elixir', name: 'Elixir', type: 'consumable', emoji: '✨', description: 'Full restore.', effect: { heal: 999, restoreMana: 999 }, tier: 3, rarity: 'rare' }
+    elixir: { id: 'elixir', name: 'Elixir', type: 'consumable', emoji: '✨', description: 'Full restore.', effect: { heal: 999, restoreMana: 999 }, tier: 3, rarity: 'rare' },
+    warp_scroll: { id: 'warp_scroll', name: 'Warp Scroll', type: 'consumable', emoji: '🌀', description: 'Teleports you back to the castle.', effect: { warp: true }, tier: 2, rarity: 'uncommon' }
 }
 
 // ============================================
@@ -215,9 +216,9 @@ export const OVERWORLD_ENEMIES = {
 export const RARITY_COLORS = { common: '#9d9d9d', uncommon: '#1eff00', rare: '#0070dd', epic: '#a335ee', legendary: '#ff8000' }
 
 export const LOOT_TABLES = {
-    tier1: ['leather_cap', 'cloth_shirt', 'cloth_pants', 'sandals', 'rusty_dagger', 'health_potion', 'mana_potion', 'copper_ring', 'copper_amulet', 'wooden_shield'],
-    tier2: ['iron_helm', 'leather_armor', 'leather_leggings', 'leather_boots', 'iron_sword', 'iron_dagger', 'longbow', 'arcane_staff', 'health_potion', 'large_health_potion', 'mana_potion', 'ring_of_strength', 'ring_of_protection', 'silver_amulet', 'iron_shield', 'wizard_hat', 'mage_robes'],
-    tier3: ['steel_helm', 'chainmail', 'iron_leggings', 'iron_boots', 'steel_sword', 'large_health_potion', 'large_mana_potion', 'elixir', 'amulet_of_power', 'ring_of_haste', 'ring_of_arcana', 'tower_shield', 'tome_of_wisdom', 'swift_boots', 'elven_bow', 'shadow_dagger', 'staff_of_storms', 'flame_blade'],
+    tier1: ['leather_cap', 'cloth_shirt', 'cloth_pants', 'sandals', 'rusty_dagger', 'health_potion', 'mana_potion', 'copper_ring', 'copper_amulet', 'wooden_shield', 'warp_scroll'],
+    tier2: ['iron_helm', 'leather_armor', 'leather_leggings', 'leather_boots', 'iron_sword', 'iron_dagger', 'longbow', 'arcane_staff', 'health_potion', 'large_health_potion', 'mana_potion', 'ring_of_strength', 'ring_of_protection', 'silver_amulet', 'iron_shield', 'wizard_hat', 'mage_robes', 'warp_scroll'],
+    tier3: ['steel_helm', 'chainmail', 'iron_leggings', 'iron_boots', 'steel_sword', 'large_health_potion', 'large_mana_potion', 'elixir', 'amulet_of_power', 'ring_of_haste', 'ring_of_arcana', 'tower_shield', 'tome_of_wisdom', 'swift_boots', 'elven_bow', 'shadow_dagger', 'staff_of_storms', 'flame_blade', 'warp_scroll'],
     scrolls_early: ['scroll_power_strike', 'scroll_fireball', 'scroll_aimed_shot', 'scroll_heal'],
     scrolls_mid: ['scroll_shield_bash', 'scroll_ice_shard', 'scroll_poison_arrow', 'scroll_evasion', 'scroll_arcane_shield'],
     scrolls_late: ['scroll_battle_cry', 'scroll_lightning_bolt', 'scroll_multi_shot']
@@ -230,23 +231,99 @@ export const BIOMES = {
     mountains: { id: 'mountains', name: 'Mountains', groundChar: '^', color: '#5a5a5a' }
 }
 
+// AI-generated random monster names and types
+const MONSTER_PREFIXES = ['Shadow', 'Cursed', 'Feral', 'Ancient', 'Venomous', 'Raging', 'Dire', 'Frost', 'Flame', 'Spectral', 'Corrupted', 'Savage', 'Bloodthirsty', 'Twisted', 'Nightmare']
+const MONSTER_BASES = ['Wolf', 'Spider', 'Skeleton', 'Goblin', 'Orc', 'Troll', 'Wraith', 'Ghoul', 'Serpent', 'Hound', 'Scorpion', 'Bat', 'Rat', 'Slime', 'Golem', 'Imp', 'Shade', 'Crawler', 'Beast', 'Horror']
+const MONSTER_SUFFIXES = ['of Doom', 'the Vile', 'Bane', 'Devourer', 'Hunter', 'Stalker', 'Fiend', 'Terror', '', '', '', '', '', '']
+const MONSTER_EMOJIS = ['👹', '💀', '👻', '🕷️', '🐺', '🦇', '🐍', '🦂', '😈', '🧟', '🧌', '👾', '🐗', '🦴', '🔥', '❄️', '⚡', '☠️']
+
+export function generateRandomMonster(level = 1, rng = null) {
+    const rand = () => rng ? rng.next() : Math.random()
+    const randInt = (max) => rng ? rng.nextInt(max) : Math.floor(Math.random() * max)
+    
+    // Generate name
+    const prefix = MONSTER_PREFIXES[randInt(MONSTER_PREFIXES.length)]
+    const base = MONSTER_BASES[randInt(MONSTER_BASES.length)]
+    const suffix = MONSTER_SUFFIXES[randInt(MONSTER_SUFFIXES.length)]
+    const name = suffix ? `${prefix} ${base} ${suffix}` : `${prefix} ${base}`
+    const emoji = MONSTER_EMOJIS[randInt(MONSTER_EMOJIS.length)]
+    
+    // Generate stats based on level with variance
+    const variance = () => 0.8 + rand() * 0.4 // 80% to 120%
+    const baseMultiplier = 1 + (level - 1) * 0.25 // Stronger scaling per level
+    
+    // Randomly decide if physical or magic focused
+    const isMagic = rand() < 0.3
+    
+    const hp = Math.floor((25 + level * 12) * variance() * baseMultiplier)
+    const physDmg = isMagic ? Math.floor((3 + level * 2) * variance()) : Math.floor((8 + level * 4) * variance() * baseMultiplier)
+    const magDmg = isMagic ? Math.floor((8 + level * 4) * variance() * baseMultiplier) : Math.floor((level * 2) * variance())
+    const def = Math.floor((3 + level * 2) * variance() * baseMultiplier)
+    const mres = Math.floor((2 + level * 1.5) * variance() * baseMultiplier)
+    const spd = Math.floor((2 + level * 0.5) * variance())
+    const xp = Math.floor((15 + level * 10) * variance() * baseMultiplier)
+    const gold = Math.floor((10 + level * 8) * variance() * baseMultiplier)
+    
+    return {
+        id: `monster_${Date.now()}_${randInt(10000)}`,
+        name,
+        emoji,
+        hp,
+        maxHp: hp,
+        physicalDamage: physDmg,
+        magicDamage: magDmg,
+        defense: def,
+        magicResist: mres,
+        speed: spd,
+        xp,
+        gold,
+        generated: true
+    }
+}
+
 // Helper functions
 export function getEnemyForFloor(floor) {
+    // 60% chance for AI-generated monster
+    if (Math.random() < 0.6) {
+        return generateRandomMonster(floor)
+    }
     const available = Object.values(ENEMIES).filter(e => floor >= e.floors[0] && floor <= e.floors[1])
-    if (available.length === 0) return Object.values(ENEMIES).reduce((a, b) => b.floors[1] > a.floors[1] ? b : a)
+    if (available.length === 0) return generateRandomMonster(floor)
     return available[Math.floor(Math.random() * available.length)]
 }
 
 export function getOverworldEnemy(rng = null) {
+    const rand = () => rng ? rng.next() : Math.random()
+    // 50% chance for AI-generated monster in overworld
+    if (rand() < 0.5) {
+        return generateRandomMonster(1, rng)
+    }
     const enemies = Object.values(OVERWORLD_ENEMIES)
     const index = rng ? rng.nextInt(enemies.length) : Math.floor(Math.random() * enemies.length)
     return enemies[index]
 }
 
 export function scaleEnemy(enemy, floor = 1, rng = null) {
-    const scaling = 1 + (floor - 1) * 0.12
+    // If already a generated monster, just return it with gold calculated
+    if (enemy.generated) {
+        return enemy
+    }
+    
+    // Increased scaling: 18% per floor instead of 12%
+    const scaling = 1 + (floor - 1) * 0.18
     const goldRoll = rng ? rng.next() : Math.random()
-    return { ...enemy, hp: Math.floor(enemy.baseHp * scaling), maxHp: Math.floor(enemy.baseHp * scaling), physicalDamage: Math.floor(enemy.basePhysicalDamage * scaling), magicDamage: Math.floor(enemy.baseMagicDamage * scaling), defense: Math.floor(enemy.baseDefense * scaling), magicResist: Math.floor(enemy.baseMagicResist * scaling), speed: enemy.baseSpeed, xp: Math.floor(enemy.xp * scaling), gold: Math.floor((enemy.gold[0] + goldRoll * (enemy.gold[1] - enemy.gold[0])) * scaling) }
+    return { 
+        ...enemy, 
+        hp: Math.floor(enemy.baseHp * scaling), 
+        maxHp: Math.floor(enemy.baseHp * scaling), 
+        physicalDamage: Math.floor(enemy.basePhysicalDamage * scaling), 
+        magicDamage: Math.floor(enemy.baseMagicDamage * scaling), 
+        defense: Math.floor(enemy.baseDefense * scaling), 
+        magicResist: Math.floor(enemy.baseMagicResist * scaling), 
+        speed: enemy.baseSpeed, 
+        xp: Math.floor(enemy.xp * scaling), 
+        gold: Math.floor((enemy.gold[0] + goldRoll * (enemy.gold[1] - enemy.gold[0])) * scaling) 
+    }
 }
 
 export function getLootDrop(floor, isChest = false) {

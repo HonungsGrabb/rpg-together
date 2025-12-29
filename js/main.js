@@ -122,6 +122,16 @@ function setupMultiplayerCallbacks() {
     game.multiplayer.onChatMessage = (messages) => {
         renderChat(messages)
     }
+    
+    // When party updates
+    game.multiplayer.onPartyUpdate = (party) => {
+        renderPartyPanel(party)
+    }
+    
+    // When party invite received
+    game.multiplayer.onPartyInvite = (invites) => {
+        renderPartyInvites(invites)
+    }
 }
 
 function updateOnlineCount(count) {
@@ -140,6 +150,105 @@ function renderChat(messages) {
     
     container.scrollTop = container.scrollHeight
 }
+
+// Party UI
+let selectedPlayer = null
+
+function renderPartyPanel(party) {
+    const container = document.getElementById('party-panel')
+    const status = document.getElementById('party-status')
+    if (!container) return
+    
+    if (!party) {
+        container.innerHTML = '<p class="no-party">Not in a party</p>'
+        if (status) status.textContent = ''
+        return
+    }
+    
+    if (status) status.textContent = `(${party.members.length})`
+    
+    let html = ''
+    for (const member of party.members) {
+        const isLeader = member.userId === party.leaderId
+        const isMe = member.userId === game.userId
+        const hpPercent = member.maxHp > 0 ? Math.round((member.hp / member.maxHp) * 100) : 0
+        
+        html += `<div class="party-member ${isLeader ? 'is-leader' : ''} ${isMe ? 'is-me' : ''}">
+            ${isLeader ? '<span class="party-leader-crown">👑</span>' : ''}
+            <span class="party-member-name">${member.name}${isMe ? ' (You)' : ''}</span>
+            <span class="party-member-hp">${hpPercent}%</span>
+        </div>`
+    }
+    
+    html += '<button class="btn-leave-party" id="btn-leave-party">Leave Party</button>'
+    container.innerHTML = html
+    
+    document.getElementById('btn-leave-party')?.addEventListener('click', async () => {
+        await game.multiplayer.leaveParty()
+    })
+}
+
+function renderPartyInvites(invites) {
+    const container = document.getElementById('party-invites')
+    if (!container) return
+    
+    if (!invites || invites.length === 0) {
+        container.innerHTML = ''
+        return
+    }
+    
+    container.innerHTML = invites.map(invite => `
+        <div class="party-invite" data-invite-id="${invite.id}">
+            <div class="party-invite-text">📩 ${invite.from_name} invited you to their party!</div>
+            <div class="party-invite-buttons">
+                <button class="btn-accept" data-invite-id="${invite.id}">Accept</button>
+                <button class="btn-decline" data-invite-id="${invite.id}">Decline</button>
+            </div>
+        </div>
+    `).join('')
+    
+    // Add event listeners
+    container.querySelectorAll('.btn-accept').forEach(btn => {
+        btn.addEventListener('click', () => {
+            game.multiplayer.respondToInvite(btn.dataset.inviteId, true)
+        })
+    })
+    
+    container.querySelectorAll('.btn-decline').forEach(btn => {
+        btn.addEventListener('click', () => {
+            game.multiplayer.respondToInvite(btn.dataset.inviteId, false)
+        })
+    })
+}
+
+function handlePlayerClick(player, event) {
+    selectedPlayer = player
+    const menu = document.getElementById('player-menu')
+    const nameEl = document.getElementById('menu-player-name')
+    
+    if (menu && nameEl) {
+        nameEl.textContent = player.player_name
+        menu.style.left = `${event.clientX}px`
+        menu.style.top = `${event.clientY}px`
+        menu.classList.remove('hidden')
+    }
+}
+
+// Close player menu when clicking elsewhere
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('player-menu')
+    if (menu && !menu.contains(e.target) && !e.target.classList.contains('tile-other-player')) {
+        menu.classList.add('hidden')
+    }
+})
+
+// Invite button handler
+document.getElementById('btn-invite-party')?.addEventListener('click', async () => {
+    if (selectedPlayer) {
+        await game.multiplayer.sendPartyInvite(selectedPlayer.user_id, selectedPlayer.player_name)
+        document.getElementById('player-menu')?.classList.add('hidden')
+    }
+})
 
 // Character Creation
 function showRaceScreen() {
@@ -228,6 +337,21 @@ function updateGameUI() {
 function renderMap() { 
     if (game.inDungeon && game.dungeon) game.dungeon.render('map-grid')
     else if (game.world) game.world.render('map-grid')
+    
+    // Add click handlers for other players
+    document.querySelectorAll('.tile-other-player').forEach(tile => {
+        tile.style.cursor = 'pointer'
+        tile.addEventListener('click', (e) => {
+            const playerId = tile.dataset.playerId
+            const playerName = tile.dataset.playerName
+            if (playerId) {
+                handlePlayerClick({
+                    user_id: playerId,
+                    player_name: playerName
+                }, e)
+            }
+        })
+    })
 }
 
 function renderGameLog() { 
@@ -327,7 +451,16 @@ function showItemDetail(item, equipSlot = null, invIndex = null) {
             const useBtn = document.createElement('button')
             useBtn.className = 'btn-primary'
             useBtn.textContent = 'Use'
-            useBtn.onclick = () => { game.useItem(invIndex); hideModal('item-detail-modal'); updateGameUI() }
+            useBtn.onclick = async () => { 
+                const result = game.useItem(invIndex)
+                hideModal('item-detail-modal')
+                if (result === 'warp') {
+                    // Warp scroll - refresh map and multiplayer
+                    await game.multiplayer.onAreaChange()
+                    renderMap()
+                }
+                updateGameUI()
+            }
             actions.appendChild(useBtn)
         }
         if (item.type === 'scroll') {
