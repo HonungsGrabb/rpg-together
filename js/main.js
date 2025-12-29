@@ -57,6 +57,8 @@ async function loadExistingGame(slot) {
         renderMap()
         setupInput()
         updateOnlineCount()
+        renderPartyPanel(game.multiplayer.party)
+        renderPartyInvites(game.multiplayer.pendingInvites)
     } 
 }
 
@@ -101,6 +103,8 @@ document.getElementById('start-game-btn')?.addEventListener('click', async () =>
 // ============================================
 // MULTIPLAYER
 // ============================================
+let selectedPlayer = null // For player context menu
+
 function setupMultiplayerCallbacks() {
     game.multiplayer.onPlayersUpdate = (players) => {
         renderMap()
@@ -108,6 +112,12 @@ function setupMultiplayerCallbacks() {
     }
     game.multiplayer.onChatMessage = (messages) => {
         renderChat(messages)
+    }
+    game.multiplayer.onPartyUpdate = (party) => {
+        renderPartyPanel(party)
+    }
+    game.multiplayer.onPartyInvite = (invites) => {
+        renderPartyInvites(invites)
     }
 }
 
@@ -137,6 +147,108 @@ async function sendChatMessage() {
 document.getElementById('chat-send')?.addEventListener('click', sendChatMessage)
 document.getElementById('chat-input')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); sendChatMessage() }
+})
+
+// ============================================
+// PARTY SYSTEM UI
+// ============================================
+function renderPartyPanel(party) {
+    const panel = document.getElementById('party-panel')
+    const status = document.getElementById('party-status')
+    if (!panel) return
+
+    if (!party || !party.members || party.members.length === 0) {
+        panel.innerHTML = '<p class="no-party">No party - click players to invite!</p>'
+        if (status) status.textContent = ''
+        return
+    }
+
+    if (status) status.textContent = `(${party.members.length}/4)`
+
+    let html = ''
+    for (const member of party.members) {
+        const classes = ['party-member']
+        if (member.isLeader) classes.push('is-leader')
+        if (member.isMe) classes.push('is-me')
+        
+        const hpPercent = member.online ? Math.round((member.online.hp / member.online.max_hp) * 100) : '?'
+        
+        html += `<div class="${classes.join(' ')}">
+            <span class="member-name">${member.isLeader ? '👑 ' : ''}${member.player_name}</span>
+            <span class="member-hp">${hpPercent}% HP</span>
+        </div>`
+    }
+
+    if (party.members.some(m => m.isMe)) {
+        html += `<button id="btn-leave-party" class="btn-secondary btn-small">Leave Party</button>`
+    }
+
+    panel.innerHTML = html
+
+    document.getElementById('btn-leave-party')?.addEventListener('click', () => {
+        game.multiplayer.leaveParty()
+    })
+}
+
+function renderPartyInvites(invites) {
+    const container = document.getElementById('party-invites')
+    if (!container) return
+
+    if (!invites || invites.length === 0) {
+        container.classList.add('hidden')
+        container.innerHTML = ''
+        return
+    }
+
+    container.classList.remove('hidden')
+    let html = '<h4>Party Invites</h4>'
+    for (const invite of invites) {
+        html += `<div class="party-invite">
+            <span>${invite.from_name} invited you!</span>
+            <button class="btn-accept" data-id="${invite.id}">✓</button>
+            <button class="btn-decline" data-id="${invite.id}">✕</button>
+        </div>`
+    }
+    container.innerHTML = html
+
+    container.querySelectorAll('.btn-accept').forEach(btn => {
+        btn.addEventListener('click', () => game.multiplayer.respondToInvite(btn.dataset.id, true))
+    })
+    container.querySelectorAll('.btn-decline').forEach(btn => {
+        btn.addEventListener('click', () => game.multiplayer.respondToInvite(btn.dataset.id, false))
+    })
+}
+
+function handlePlayerClick(player, event) {
+    selectedPlayer = player
+    const menu = document.getElementById('player-menu')
+    if (!menu) return
+    
+    menu.style.left = `${event.clientX}px`
+    menu.style.top = `${event.clientY}px`
+    menu.classList.remove('hidden')
+    
+    document.getElementById('player-menu-name').textContent = player.player_name
+}
+
+document.getElementById('btn-invite-player')?.addEventListener('click', () => {
+    if (selectedPlayer) {
+        game.multiplayer.sendPartyInvite(selectedPlayer.user_id, selectedPlayer.player_name)
+    }
+    document.getElementById('player-menu')?.classList.add('hidden')
+    selectedPlayer = null
+})
+
+document.getElementById('btn-close-menu')?.addEventListener('click', () => {
+    document.getElementById('player-menu')?.classList.add('hidden')
+    selectedPlayer = null
+})
+
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('player-menu')
+    if (menu && !menu.contains(e.target) && !e.target.classList.contains('tile-other-player')) {
+        menu.classList.add('hidden')
+    }
 })
 
 // ============================================
@@ -190,7 +302,12 @@ function renderOtherPlayers() {
                 const tile = tiles[player.pos_x]
                 tile.classList.add('tile-other-player')
                 tile.textContent = RACES[player.race]?.emoji || '👤'
-                tile.title = `${player.player_name} (Lv.${player.level})`
+                tile.title = `${player.player_name} (Lv.${player.level}) - Click to interact`
+                tile.style.cursor = 'pointer'
+                tile.onclick = (e) => {
+                    e.stopPropagation()
+                    handlePlayerClick(player, e)
+                }
             }
         }
     }
