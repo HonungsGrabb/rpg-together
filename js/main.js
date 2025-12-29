@@ -206,7 +206,9 @@ function renderPartyPanel(party) {
 }
 
 function renderPartyInvites(invites) {
+    console.log('renderPartyInvites called with:', invites)
     const container = document.getElementById('party-invites')
+    console.log('party-invites container:', container)
     if (!container) return
     
     if (!invites || invites.length === 0) {

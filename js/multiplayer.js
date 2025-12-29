@@ -1,4 +1,4 @@
-import { supabase } from './supabase-client.js'
+import { supabase, supabaseUrl, supabaseKey } from './supabase-client.js'
 
 export class Multiplayer {
     constructor(game) {
@@ -25,24 +25,24 @@ export class Multiplayer {
         // Synchronous cleanup - use sendBeacon for reliability
         if (this.game.userId) {
             // Use fetch with keepalive for cleanup
-            const url = `${supabase.supabaseUrl}/rest/v1/online_players?user_id=eq.${this.game.userId}`
+            const url = `${supabaseUrl}/rest/v1/online_players?user_id=eq.${this.game.userId}`
             fetch(url, {
                 method: 'DELETE',
                 headers: {
-                    'apikey': supabase.supabaseKey,
-                    'Authorization': `Bearer ${supabase.supabaseKey}`
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${supabaseKey}`
                 },
                 keepalive: true
             }).catch(() => {})
             
             // Also try to leave party
             if (this.party) {
-                const partyUrl = `${supabase.supabaseUrl}/rest/v1/party_members?user_id=eq.${this.game.userId}`
+                const partyUrl = `${supabaseUrl}/rest/v1/party_members?user_id=eq.${this.game.userId}`
                 fetch(partyUrl, {
                     method: 'DELETE',
                     headers: {
-                        'apikey': supabase.supabaseKey,
-                        'Authorization': `Bearer ${supabase.supabaseKey}`
+                        'apikey': supabaseKey,
+                        'Authorization': `Bearer ${supabaseKey}`
                     },
                     keepalive: true
                 }).catch(() => {})
@@ -489,6 +489,13 @@ export class Multiplayer {
         }, { onConflict: 'from_user_id,to_user_id' })
 
         // Broadcast invite
+        console.log('Broadcasting party invite:', {
+            fromUserId: this.game.userId,
+            fromName: this.game.player.name,
+            toUserId: targetUserId,
+            partyId: this.party.id
+        })
+        
         this.channel?.send({
             type: 'broadcast',
             event: 'party-invite',
@@ -521,10 +528,11 @@ export class Multiplayer {
                 player_name: this.game.player.name
             })
 
-            // Update invite status
+            // Update invite status in database (find by from/to user IDs)
             await supabase.from('party_invites')
                 .update({ status: 'accepted' })
-                .eq('id', inviteId)
+                .eq('from_user_id', invite.from_user_id)
+                .eq('to_user_id', this.game.userId)
 
             // Load party data
             await this.loadPartyData(invite.party_id)
@@ -543,10 +551,11 @@ export class Multiplayer {
 
             this.game.log(`Joined ${invite.from_name}'s party!`, 'info')
         } else {
-            // Decline
+            // Decline - update by from/to user IDs
             await supabase.from('party_invites')
                 .update({ status: 'declined' })
-                .eq('id', inviteId)
+                .eq('from_user_id', invite.from_user_id)
+                .eq('to_user_id', this.game.userId)
 
             this.channel?.send({
                 type: 'broadcast',
@@ -634,8 +643,16 @@ export class Multiplayer {
     }
 
     handlePartyInvite(payload) {
-        if (payload.toUserId !== this.game.userId) return
+        console.log('Received party invite:', payload)
+        console.log('My userId:', this.game.userId)
+        
+        if (payload.toUserId !== this.game.userId) {
+            console.log('Invite not for me, ignoring')
+            return
+        }
 
+        console.log('Invite is for me, adding to pendingInvites')
+        
         this.pendingInvites.push({
             id: `temp_${Date.now()}`,
             from_user_id: payload.fromUserId,
@@ -644,8 +661,13 @@ export class Multiplayer {
             status: 'pending'
         })
 
-        if (this.onPartyInvite) this.onPartyInvite(this.pendingInvites)
-        this.game.log(`${payload.fromName} invited you to their party!`, 'info')
+        console.log('pendingInvites now:', this.pendingInvites)
+        console.log('onPartyInvite callback:', this.onPartyInvite ? 'SET' : 'NOT SET')
+        
+        if (this.onPartyInvite) {
+            this.onPartyInvite(this.pendingInvites)
+        }
+        this.game.log(`📩 ${payload.fromName} invited you to their party!`, 'info')
     }
 
     handlePartyResponse(payload) {
