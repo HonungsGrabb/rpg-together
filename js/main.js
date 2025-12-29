@@ -28,7 +28,12 @@ document.getElementById('logout-btn')?.addEventListener('click', logout)
 function showAuthMsg(msg, isError = true) { const el = document.getElementById('auth-message'); el.textContent = msg; el.className = isError ? 'error' : 'success' }
 
 // Save Screen
-async function loadSaveScreen(userId) { showScreen('save-screen'); renderSaveSlots(await game.loadSaves(userId)) }
+async function loadSaveScreen(userId) { 
+    await game.disconnectMultiplayer()
+    showScreen('save-screen')
+    renderSaveSlots(await game.loadSaves(userId)) 
+}
+
 function renderSaveSlots(saves) {
     const container = document.getElementById('save-slots'); container.innerHTML = ''
     for (let slot = 1; slot <= 3; slot++) {
@@ -43,7 +48,17 @@ function renderSaveSlots(saves) {
     }
 }
 function startNewGame(slot) { selectedSlot = slot; selectedRace = null; selectedClass = null; showRaceScreen() }
-async function loadExistingGame(slot) { if (await game.loadGame(slot)) { showScreen('game-screen'); updateGameUI(); renderMap(); setupInput() } }
+
+async function loadExistingGame(slot) { 
+    if (await game.loadGame(slot)) { 
+        setupMultiplayerCallbacks()
+        showScreen('game-screen')
+        updateGameUI()
+        renderMap()
+        setupInput()
+        updateOnlineCount()
+    } 
+}
 
 // Character Creation
 function showRaceScreen() {
@@ -78,10 +93,55 @@ document.getElementById('start-game-btn')?.addEventListener('click', async () =>
     const name = document.getElementById('character-name').value.trim()
     if (!name) return alert('Enter a name')
     await game.createNewGame(selectedSlot, name, selectedRace, selectedClass)
+    setupMultiplayerCallbacks()
     showScreen('game-screen'); updateGameUI(); renderMap(); setupInput()
+    updateOnlineCount()
 })
 
-// Game UI
+// ============================================
+// MULTIPLAYER
+// ============================================
+function setupMultiplayerCallbacks() {
+    game.multiplayer.onPlayersUpdate = (players) => {
+        renderMap()
+        updateOnlineCount()
+    }
+    game.multiplayer.onChatMessage = (messages) => {
+        renderChat(messages)
+    }
+}
+
+function updateOnlineCount() {
+    const count = game.multiplayer.otherPlayers.size + 1
+    const el = document.getElementById('online-count')
+    if (el) el.textContent = `👥 ${count}`
+}
+
+function renderChat(messages) {
+    const container = document.getElementById('chat-messages')
+    if (!container) return
+    container.innerHTML = messages.slice(-20).map(m => {
+        const cls = m.isLocal ? 'chat-local' : 'chat-nearby'
+        return `<p class="${cls}"><strong>${m.name}:</strong> ${m.message}</p>`
+    }).join('')
+    container.scrollTop = container.scrollHeight
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chat-input')
+    if (!input || !input.value.trim()) return
+    await game.multiplayer.sendChat(input.value)
+    input.value = ''
+}
+
+document.getElementById('chat-send')?.addEventListener('click', sendChatMessage)
+document.getElementById('chat-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); sendChatMessage() }
+})
+
+// ============================================
+// GAME UI
+// ============================================
 function updateGameUI() {
     const p = game.player; if (!p) return
     document.getElementById('player-name-display').textContent = p.name
@@ -110,8 +170,37 @@ function updateGameUI() {
     renderEquipment(); renderInventory(); renderSkills(); renderGameLog()
 }
 
-function renderMap() { if (game.inDungeon && game.dungeon) game.dungeon.render('map-grid'); else if (game.world) game.world.render('map-grid') }
-function renderGameLog() { const c = document.getElementById('game-log'); c.innerHTML = game.gameLog.slice(-12).map(e => `<p class="${e.type}">${e.message}</p>`).join(''); c.scrollTop = c.scrollHeight }
+function renderMap() { 
+    if (game.inDungeon && game.dungeon) game.dungeon.render('map-grid')
+    else if (game.world) game.world.render('map-grid')
+    renderOtherPlayers()
+}
+
+function renderOtherPlayers() {
+    const container = document.getElementById('map-grid')
+    if (!container) return
+    const players = game.multiplayer.getPlayersInArea()
+    for (const player of players) {
+        const rows = container.querySelectorAll('.grid-row')
+        if (rows[player.pos_y]) {
+            const tiles = rows[player.pos_y].querySelectorAll('.tile')
+            if (tiles[player.pos_x]) {
+                const myPos = game.inDungeon ? game.dungeon?.playerPos : game.world?.playerPos
+                if (myPos && player.pos_x === myPos.x && player.pos_y === myPos.y) continue
+                const tile = tiles[player.pos_x]
+                tile.classList.add('tile-other-player')
+                tile.textContent = RACES[player.race]?.emoji || '👤'
+                tile.title = `${player.player_name} (Lv.${player.level})`
+            }
+        }
+    }
+}
+
+function renderGameLog() { 
+    const c = document.getElementById('game-log')
+    c.innerHTML = game.gameLog.slice(-12).map(e => `<p class="${e.type}">${e.message}</p>`).join('')
+    c.scrollTop = c.scrollHeight 
+}
 
 function renderEquipment() {
     const container = document.getElementById('equipment-panel'); container.innerHTML = ''
@@ -152,7 +241,6 @@ function renderSkills() {
     }
 }
 
-// Item Detail Modal
 function showItemDetail(item, equipSlot = null, invIndex = null) {
     document.getElementById('item-detail-emoji').textContent = item.emoji
     document.getElementById('item-detail-name').textContent = item.name
@@ -200,9 +288,11 @@ function showCombatUI() {
     document.getElementById('combat-player-name').textContent = p.name
     document.getElementById('combat-enemy-emoji').textContent = e.emoji
     document.getElementById('combat-enemy-name').textContent = e.name
+    game.multiplayer.broadcastCombat('is fighting', e.name)
     renderCombatSpells(); document.getElementById('combat-log-modal').innerHTML = ''
     updateCombatUI(); showModal('combat-modal')
 }
+
 function updateCombatUI() {
     const p = game.player, e = game.currentEnemy
     document.getElementById('combat-player-hp').style.width = `${(p.hp / game.getMaxHp()) * 100}%`
@@ -217,6 +307,7 @@ function updateCombatUI() {
     log.innerHTML = game.gameLog.slice(-6).map(e => `<p class="${e.type}">${e.message}</p>`).join('')
     log.scrollTop = log.scrollHeight
 }
+
 function renderCombatSpells() {
     const container = document.getElementById('combat-spells'); container.innerHTML = ''
     for (const spellId of game.player.learnedSpells) {
@@ -228,6 +319,7 @@ function renderCombatSpells() {
         container.appendChild(btn)
     }
 }
+
 document.getElementById('btn-attack')?.addEventListener('click', () => handleCombatResult(game.playerAttack()))
 document.getElementById('btn-use-potion')?.addEventListener('click', () => {
     const potionIndex = game.player.inventory.findIndex(id => { const item = game.getItem(id); return item?.type === 'consumable' && (item?.effect?.heal || item?.effect?.restoreMana) })
@@ -239,10 +331,14 @@ document.getElementById('btn-flee')?.addEventListener('click', () => {
     if (escaped) setTimeout(() => { hideModal('combat-modal'); renderMap() }, 500)
     else if (game.player.hp <= 0) setTimeout(() => { hideModal('combat-modal'); showDeathScreen() }, 800)
 })
+
 function handleCombatResult(result) {
     if (!result) return
     updateCombatUI(); updateGameUI(); renderCombatSpells()
-    if (result.enemyDefeated) setTimeout(() => { hideModal('combat-modal'); renderMap() }, 800)
+    if (result.enemyDefeated) {
+        game.multiplayer.broadcastCombat('defeated', game.currentEnemy?.name || 'an enemy')
+        setTimeout(() => { hideModal('combat-modal'); renderMap() }, 800)
+    }
     else if (result.playerDefeated) setTimeout(() => { hideModal('combat-modal'); showDeathScreen() }, 800)
 }
 
@@ -252,38 +348,77 @@ function showDeathScreen() {
     document.getElementById('death-stats').innerHTML = `<p>Level ${p.level} ${RACES[p.race]?.name} ${CLASSES[p.class]?.name}</p><p>Enemies: ${p.stats?.enemiesKilled || 0}</p><p>Floors: ${p.stats?.floorsExplored || 0}</p>`
     showModal('death-modal')
 }
-document.getElementById('btn-return-menu')?.addEventListener('click', async () => { await game.deleteGame(game.currentSlot); hideAllModals(); loadSaveScreen(game.userId) })
+document.getElementById('btn-return-menu')?.addEventListener('click', async () => { 
+    await game.disconnectMultiplayer()
+    await game.deleteGame(game.currentSlot)
+    hideAllModals()
+    loadSaveScreen(game.userId) 
+})
 
 // Prompts
 function showDungeonPrompt() { showModal('dungeon-prompt-modal') }
-document.getElementById('btn-enter-dungeon')?.addEventListener('click', () => { game.enterDungeon(); hideModal('dungeon-prompt-modal'); renderMap(); updateGameUI() })
+document.getElementById('btn-enter-dungeon')?.addEventListener('click', async () => { 
+    game.enterDungeon()
+    await game.multiplayer.onAreaChange()
+    hideModal('dungeon-prompt-modal'); renderMap(); updateGameUI() 
+})
 document.getElementById('btn-stay-outside')?.addEventListener('click', () => hideModal('dungeon-prompt-modal'))
 
 function showStairsPrompt() { document.getElementById('next-floor').textContent = game.player.dungeonFloor + 1; showModal('stairs-modal') }
-document.getElementById('btn-descend')?.addEventListener('click', () => { game.descendDungeon(); hideModal('stairs-modal'); renderMap(); updateGameUI() })
+document.getElementById('btn-descend')?.addEventListener('click', async () => { 
+    game.descendDungeon()
+    await game.multiplayer.onAreaChange()
+    hideModal('stairs-modal'); renderMap(); updateGameUI() 
+})
 document.getElementById('btn-stay')?.addEventListener('click', () => hideModal('stairs-modal'))
 
 function showExitPrompt() { showModal('exit-modal') }
-document.getElementById('btn-exit-dungeon')?.addEventListener('click', () => { game.exitDungeon(); hideModal('exit-modal'); renderMap(); updateGameUI() })
+document.getElementById('btn-exit-dungeon')?.addEventListener('click', async () => { 
+    game.exitDungeon()
+    await game.multiplayer.onAreaChange()
+    hideModal('exit-modal'); renderMap(); updateGameUI() 
+})
 document.getElementById('btn-stay-dungeon')?.addEventListener('click', () => hideModal('exit-modal'))
 
 // Pause
 document.getElementById('menu-btn')?.addEventListener('click', () => showModal('pause-modal'))
 document.getElementById('btn-resume')?.addEventListener('click', () => hideModal('pause-modal'))
-document.getElementById('btn-save-quit')?.addEventListener('click', async () => { await game.saveGame(); hideAllModals(); loadSaveScreen(game.userId) })
+document.getElementById('btn-save-quit')?.addEventListener('click', async () => { 
+    await game.saveGame()
+    await game.disconnectMultiplayer()
+    hideAllModals(); loadSaveScreen(game.userId) 
+})
 
 // Input
 function setupInput() {
-    document.onkeydown = e => {
+    document.onkeydown = async e => {
+        if (document.activeElement?.id === 'chat-input') {
+            if (e.key === 'Escape') document.activeElement.blur()
+            return
+        }
         const openModals = document.querySelectorAll('.modal:not(.hidden)')
         if (openModals.length > 0) { if (e.key === 'Escape') hideAllModals(); return }
         if (game.inCombat) return
         const key = e.key.toLowerCase()
+        if (key === 'enter') {
+            const chatInput = document.getElementById('chat-input')
+            if (chatInput) { chatInput.focus(); e.preventDefault(); return }
+        }
         if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
             e.preventDefault()
-            let dir; if (key === 'w' || key === 'arrowup') dir = 'w'; else if (key === 'a' || key === 'arrowleft') dir = 'a'; else if (key === 's' || key === 'arrowdown') dir = 's'; else if (key === 'd' || key === 'arrowright') dir = 'd'
+            let dir; 
+            if (key === 'w' || key === 'arrowup') dir = 'w'
+            else if (key === 'a' || key === 'arrowleft') dir = 'a'
+            else if (key === 's' || key === 'arrowdown') dir = 's'
+            else if (key === 'd' || key === 'arrowright') dir = 'd'
             const result = game.move(dir)
-            if (result.combat) showCombatUI(); else if (result.dungeon) showDungeonPrompt(); else if (result.stairs) showStairsPrompt(); else if (result.exit) showExitPrompt()
+            const pos = game.inDungeon ? game.dungeon?.playerPos : game.world?.playerPos
+            if (pos) game.multiplayer.broadcastMove(pos.x, pos.y)
+            if (result.newArea) await game.multiplayer.onAreaChange()
+            if (result.combat) showCombatUI()
+            else if (result.dungeon) showDungeonPrompt()
+            else if (result.stairs) showStairsPrompt()
+            else if (result.exit) showExitPrompt()
             renderMap(); updateGameUI()
         }
         if (key === 'escape') showModal('pause-modal')
@@ -291,6 +426,13 @@ function setupInput() {
 }
 
 // Init
-onAuthChange(async (event, session) => { if (session?.user) await loadSaveScreen(session.user.id); else showScreen('auth-screen') })
-async function init() { const session = await getSession(); if (session?.user) await loadSaveScreen(session.user.id); else showScreen('auth-screen') }
+onAuthChange(async (event, session) => { 
+    if (session?.user) await loadSaveScreen(session.user.id)
+    else { await game.disconnectMultiplayer(); showScreen('auth-screen') }
+})
+async function init() { 
+    const session = await getSession()
+    if (session?.user) await loadSaveScreen(session.user.id)
+    else showScreen('auth-screen')
+}
 init()
