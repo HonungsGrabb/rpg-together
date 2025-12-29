@@ -297,3 +297,16 @@ button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; 
 .enemies-container h4 { font-size: 12px; margin: 4px 0; color: var(--text-primary); }
 .enemies-container .enemy-hp-text { font-size: 10px; color: var(--text-secondary); }
 .enemies-container .combat-bar { height: 6px; margin: 4px 0; }
+
+/* Party Combat Invite */
+.party-combat-invite { background: linear-gradient(135deg, #4a1a1a 0%, #2a0a0a 100%); border: 2px solid #ff4444; border-radius: 8px; padding: 12px; margin-top: 10px; text-align: center; animation: combat-pulse 1.5s ease-in-out infinite; }
+.party-combat-invite.hidden { display: none; }
+@keyframes combat-pulse { 0%, 100% { box-shadow: 0 0 5px rgba(255, 68, 68, 0.5); } 50% { box-shadow: 0 0 20px rgba(255, 68, 68, 0.8); } }
+.combat-invite-text { color: #ff6666; font-weight: bold; margin-bottom: 8px; }
+.btn-join-combat { width: 100%; background: linear-gradient(135deg, #cc3333 0%, #991111 100%); border: none; padding: 10px; font-size: 14px; font-weight: bold; animation: none; }
+.btn-join-combat:hover { background: linear-gradient(135deg, #dd4444 0%, #aa2222 100%); transform: scale(1.02); }
+
+/* Party member indicators in combat */
+.party-combat-members { margin-top: 10px; padding: 8px; background: var(--bg-dark); border-radius: 6px; }
+.party-combat-members h5 { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; }
+.party-member-combat { display: inline-block; padding: 4px 8px; background: var(--accent-blue); border-radius: 4px; font-size: 11px; margin: 2px; }

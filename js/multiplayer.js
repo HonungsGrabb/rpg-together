@@ -15,6 +15,12 @@ export class Multiplayer {
         this.onPartyUpdate = null
         this.onPartyInvite = null
         
+        // Party combat
+        this.pendingCombatInvite = null
+        this.onPartyCombatInvite = null
+        this.onPartyCombatAction = null
+        this.onPartyCombatEnd = null
+        
         // Set up beforeunload to clean up when closing browser
         window.addEventListener('beforeunload', () => {
             this.cleanupOnExit()
@@ -96,6 +102,23 @@ export class Multiplayer {
 
         this.channel.on('broadcast', { event: 'party-update' }, ({ payload }) => {
             this.handlePartyUpdate(payload)
+        })
+
+        // Party combat broadcasts
+        this.channel.on('broadcast', { event: 'party-combat-start' }, ({ payload }) => {
+            this.handlePartyCombatStart(payload)
+        })
+
+        this.channel.on('broadcast', { event: 'party-combat-join' }, ({ payload }) => {
+            this.handlePartyCombatJoin(payload)
+        })
+
+        this.channel.on('broadcast', { event: 'party-combat-action' }, ({ payload }) => {
+            this.handlePartyCombatAction(payload)
+        })
+
+        this.channel.on('broadcast', { event: 'party-combat-end' }, ({ payload }) => {
+            this.handlePartyCombatEnd(payload)
         })
 
         await this.channel.subscribe()
@@ -696,5 +719,207 @@ export class Multiplayer {
 
     isPartyLeader() {
         return this.party && this.party.leaderId === this.game.userId
+    }
+
+    // ==================== PARTY COMBAT ====================
+    
+    broadcastCombatStart(combatId, enemies, x, y) {
+        if (!this.channel || !this.party) return
+        
+        console.log('Broadcasting combat start:', combatId)
+        
+        this.channel.send({
+            type: 'broadcast',
+            event: 'party-combat-start',
+            payload: {
+                combatId,
+                userId: this.game.userId,
+                starterName: this.game.player.name,
+                enemies: enemies.map(e => ({
+                    name: e.name,
+                    emoji: e.emoji,
+                    hp: e.hp,
+                    maxHp: e.maxHp,
+                    physicalDamage: e.physicalDamage,
+                    magicDamage: e.magicDamage,
+                    defense: e.defense,
+                    magicResist: e.magicResist,
+                    speed: e.speed,
+                    xp: e.xp,
+                    gold: e.gold
+                })),
+                x,
+                y,
+                partyId: this.party.id
+            }
+        })
+    }
+    
+    broadcastCombatJoin(combatId) {
+        if (!this.channel) return
+        
+        this.channel.send({
+            type: 'broadcast',
+            event: 'party-combat-join',
+            payload: {
+                combatId,
+                userId: this.game.userId,
+                playerName: this.game.player.name
+            }
+        })
+    }
+    
+    broadcastCombatAction(action) {
+        if (!this.channel || !this.game.isPartyCombat) return
+        
+        this.channel.send({
+            type: 'broadcast',
+            event: 'party-combat-action',
+            payload: {
+                combatId: this.game.partyCombatId,
+                userId: this.game.userId,
+                ...action
+            }
+        })
+    }
+    
+    broadcastCombatEnd(combatId, victory) {
+        if (!this.channel) return
+        
+        this.channel.send({
+            type: 'broadcast',
+            event: 'party-combat-end',
+            payload: {
+                combatId,
+                userId: this.game.userId,
+                victory
+            }
+        })
+    }
+    
+    // Handler: Party member started combat
+    handlePartyCombatStart(payload) {
+        console.log('Received party-combat-start:', payload)
+        
+        // Ignore if not in same party or if it's our own combat
+        if (!this.party || payload.partyId !== this.party.id) return
+        if (payload.userId === this.game.userId) return
+        
+        // Don't show invite if already in combat
+        if (this.game.inCombat) {
+            console.log('Already in combat, ignoring invite')
+            return
+        }
+        
+        // Store pending combat invite
+        this.pendingCombatInvite = {
+            combatId: payload.combatId,
+            userId: payload.userId,
+            starterName: payload.starterName,
+            enemies: payload.enemies,
+            x: payload.x,
+            y: payload.y
+        }
+        
+        this.game.log(`⚔️ ${payload.starterName} is in combat! Click to join!`, 'info')
+        
+        // Notify UI
+        if (this.onPartyCombatInvite) {
+            this.onPartyCombatInvite(this.pendingCombatInvite)
+        }
+    }
+    
+    // Handler: Someone joined the combat
+    handlePartyCombatJoin(payload) {
+        console.log('Received party-combat-join:', payload)
+        
+        if (!this.game.isPartyCombat) return
+        if (payload.combatId !== this.game.partyCombatId) return
+        if (payload.userId === this.game.userId) return
+        
+        this.game.log(`${payload.playerName} joined the battle!`, 'info')
+        this.game.partyMembers.push({
+            userId: payload.userId,
+            name: payload.playerName
+        })
+    }
+    
+    // Handler: Combat action from party member
+    handlePartyCombatAction(payload) {
+        console.log('Received party-combat-action:', payload)
+        
+        if (!this.game.isPartyCombat) return
+        if (payload.combatId !== this.game.partyCombatId) return
+        if (payload.userId === this.game.userId) return
+        
+        // Apply the damage to our local enemy state
+        if (payload.targetIndex !== undefined && payload.damage !== undefined) {
+            const result = this.game.applyPartyMemberDamage(
+                payload.targetIndex, 
+                payload.damage, 
+                payload.playerName
+            )
+            
+            // Notify UI to update
+            if (this.onPartyCombatAction) {
+                this.onPartyCombatAction(payload, result)
+            }
+        }
+    }
+    
+    // Handler: Combat ended
+    handlePartyCombatEnd(payload) {
+        console.log('Received party-combat-end:', payload)
+        
+        // Clear pending invite if it matches
+        if (this.pendingCombatInvite && this.pendingCombatInvite.combatId === payload.combatId) {
+            this.pendingCombatInvite = null
+            if (this.onPartyCombatInvite) {
+                this.onPartyCombatInvite(null)
+            }
+        }
+        
+        // If we're in this combat, end it
+        if (this.game.isPartyCombat && this.game.partyCombatId === payload.combatId) {
+            if (payload.userId !== this.game.userId) {
+                // Someone else ended the combat
+                if (payload.victory) {
+                    this.game.log('Victory! The enemy was defeated!', 'reward')
+                } else {
+                    this.game.log('The battle was lost...', 'combat')
+                }
+                
+                // End our combat state
+                this.game.inCombat = false
+                this.game.currentEnemies = []
+                this.game.isPartyCombat = false
+                this.game.partyCombatId = null
+                
+                if (this.onPartyCombatEnd) {
+                    this.onPartyCombatEnd(payload.victory)
+                }
+            }
+        }
+    }
+    
+    // Join an ongoing party combat
+    joinPartyCombat() {
+        if (!this.pendingCombatInvite) return false
+        
+        const invite = this.pendingCombatInvite
+        this.pendingCombatInvite = null
+        
+        // Join the combat
+        this.game.joinPartyCombat(invite.combatId, invite.enemies, invite.starterName)
+        
+        // Broadcast that we joined
+        this.broadcastCombatJoin(invite.combatId)
+        
+        // Clear UI
+        if (this.onPartyCombatInvite) {
+            this.onPartyCombatInvite(null)
+        }
+        
+        return true
     }
 }

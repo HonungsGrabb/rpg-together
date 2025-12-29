@@ -149,6 +149,27 @@ function setupMultiplayerCallbacks() {
     game.multiplayer.onPartyInvite = (invites) => {
         renderPartyInvites(invites)
     }
+    
+    // When party combat starts (someone in party entered combat)
+    game.multiplayer.onPartyCombatInvite = (invite) => {
+        renderPartyCombatInvite(invite)
+    }
+    
+    // When party member does combat action
+    game.multiplayer.onPartyCombatAction = (action, result) => {
+        updateCombatUI()
+        renderEnemies()
+        if (result && result.allDefeated) {
+            setTimeout(() => { hideModal('combat-modal'); renderMap() }, 800)
+        }
+    }
+    
+    // When party combat ends
+    game.multiplayer.onPartyCombatEnd = (victory) => {
+        hideModal('combat-modal')
+        renderMap()
+        renderPartyCombatInvite(null)
+    }
 }
 
 function updateOnlineCount(count) {
@@ -239,6 +260,28 @@ function renderPartyInvites(invites) {
         })
     })
 }
+
+function renderPartyCombatInvite(invite) {
+    const container = document.getElementById('party-combat-invite')
+    const nameEl = document.getElementById('combat-starter-name')
+    
+    if (!container) return
+    
+    if (!invite) {
+        container.classList.add('hidden')
+        return
+    }
+    
+    nameEl.textContent = invite.starterName
+    container.classList.remove('hidden')
+}
+
+// Join combat button handler
+document.getElementById('btn-join-combat')?.addEventListener('click', () => {
+    if (game.multiplayer.joinPartyCombat()) {
+        showCombatUI()
+    }
+})
 
 function handlePlayerClick(player, event) {
     selectedPlayer = player

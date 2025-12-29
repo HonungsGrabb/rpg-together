@@ -14,6 +14,13 @@ export class Game {
         this.combatBuffs = []; this.combatDebuffs = []; this.enemyDots = []
         this.gameLog = []; this.generatedItems = {}
         this.multiplayer = new Multiplayer(this)
+        
+        // Party combat
+        this.isPartyCombat = false
+        this.partyCombatId = null
+        this.partyMembers = [] // Other party members in this combat
+        this.waitingForParty = false
+        this.myTurnTaken = false
     }
     
     // For backwards compatibility
@@ -171,23 +178,42 @@ export class Game {
         this.inDungeon = false; this.dungeon = null; this.log('Returned to surface', 'info'); this.saveGame()
     }
 
-    startCombat(enemies, x, y) {
+    startCombat(enemies, x, y, isJoining = false, combatId = null, existingEnemies = null) {
         this.inCombat = true
-        // Accept either single enemy or array
-        if (Array.isArray(enemies)) {
-            this.currentEnemies = enemies.map(e => ({ ...e }))
+        
+        // If joining existing combat, use provided enemies
+        if (isJoining && existingEnemies) {
+            this.currentEnemies = existingEnemies.map(e => ({ ...e }))
+            this.isPartyCombat = true
+            this.partyCombatId = combatId
         } else {
-            this.currentEnemies = [{ ...enemies }]
+            // Accept either single enemy or array
+            if (Array.isArray(enemies)) {
+                this.currentEnemies = enemies.map(e => ({ ...e }))
+            } else {
+                this.currentEnemies = [{ ...enemies }]
+            }
         }
+        
         this.targetIndex = 0
         this.enemyPosition = { x, y }
         this.combatBuffs = []; this.combatDebuffs = []; this.enemyDots = new Array(this.currentEnemies.length).fill(null)
+        this.partyMembers = []
+        this.myTurnTaken = false
+        this.waitingForParty = false
         
         if (this.currentEnemies.length === 1) {
             this.log(`⚔️ ${this.currentEnemies[0].emoji} ${this.currentEnemies[0].name} attacks!`, 'combat')
         } else {
             const names = this.currentEnemies.map(e => e.name).join(', ')
             this.log(`⚔️ A group attacks: ${names}!`, 'combat')
+        }
+        
+        // If in party and not joining, broadcast combat start
+        if (!isJoining && this.multiplayer.isInParty()) {
+            this.isPartyCombat = true
+            this.partyCombatId = `combat_${this.userId}_${Date.now()}`
+            this.multiplayer.broadcastCombatStart(this.partyCombatId, this.currentEnemies, x, y)
         }
     }
     
@@ -213,23 +239,52 @@ export class Game {
             if (this.targetIndex === -1) return null
         }
         
-        const playerSpeed = this.getSpeed()
-        const avgEnemySpeed = this.getAliveEnemies().reduce((sum, e) => sum + e.speed, 0) / this.getAliveEnemies().length
-        const playerFirst = playerSpeed >= avgEnemySpeed
-        
         let result = { playerDamage: 0, enemyDamage: 0, enemyDefeated: false, allDefeated: false, playerDefeated: false }
         
-        if (playerFirst) { 
-            result = this.executePlayerAttack(result)
-            if (!result.allDefeated) result = this.executeAllEnemyAttacks(result)
-        } else { 
+        // Player always attacks first in their turn
+        result = this.executePlayerAttack(result)
+        
+        // Broadcast damage to party if in party combat
+        if (this.isPartyCombat && !result.allDefeated) {
+            this.multiplayer.broadcastCombatAction({
+                type: 'attack',
+                targetIndex: this.targetIndex,
+                damage: result.playerDamage,
+                enemyHp: this.currentEnemy?.hp,
+                enemyMaxHp: this.currentEnemy?.maxHp,
+                playerName: this.player.name
+            })
+        }
+        
+        // Enemies counter-attack this player
+        if (!result.allDefeated) {
             result = this.executeAllEnemyAttacks(result)
-            if (!result.playerDefeated) result = this.executePlayerAttack(result)
         }
         
         this.processDots(result)
         this.tickBuffs()
         return result
+    }
+
+    // Called when receiving party member's attack
+    applyPartyMemberDamage(targetIndex, damage, attackerName) {
+        if (targetIndex >= 0 && targetIndex < this.currentEnemies.length) {
+            const enemy = this.currentEnemies[targetIndex]
+            if (enemy.hp > 0) {
+                enemy.hp = Math.max(0, enemy.hp - damage)
+                this.log(`${attackerName} hits ${enemy.name} for ${damage}!`, 'combat')
+                
+                if (enemy.hp <= 0) {
+                    this.log(`${enemy.emoji} ${enemy.name} defeated!`, 'reward')
+                    
+                    if (this.getAliveEnemies().length === 0) {
+                        this.endCombat(true)
+                        return { allDefeated: true }
+                    }
+                }
+            }
+        }
+        return { allDefeated: false }
     }
 
     executePlayerAttack(result) {
@@ -321,6 +376,19 @@ export class Game {
                 this.log(`Deals ${totalDmg} damage! (${physDmg} phys + ${magDmg} magic)`, 'combat')
             } else {
                 this.log(`Deals ${totalDmg} ${physDmg > 0 ? 'physical' : 'magic'} damage!`, 'combat')
+            }
+            
+            // Broadcast spell damage to party
+            if (this.isPartyCombat) {
+                this.multiplayer.broadcastCombatAction({
+                    type: 'spell',
+                    spellName: spell.name,
+                    targetIndex: this.targetIndex,
+                    damage: totalDmg,
+                    enemyHp: this.currentEnemy?.hp,
+                    enemyMaxHp: this.currentEnemy?.maxHp,
+                    playerName: this.player.name
+                })
             }
         }
         if (eff.baseHeal) { const heal = Math.floor(eff.baseHeal + this.getMagicPower() * (eff.healScaling || 1)); const old = this.player.hp; this.player.hp = Math.min(this.getMaxHp(), this.player.hp + heal); this.log(`Healed ${this.player.hp - old} HP!`, 'heal') }
@@ -414,16 +482,39 @@ export class Game {
     }
 
     endCombat(victory) {
+        // Broadcast combat end to party
+        if (this.isPartyCombat) {
+            this.multiplayer.broadcastCombatEnd(this.partyCombatId, victory)
+        }
+        
         if (victory) {
             // Award loot only (XP/gold already awarded per enemy)
             const floor = this.inDungeon ? this.player.dungeonFloor : 1
             const loot = getLootDrop(floor, false)
             if (loot) this.addItemToInventory(loot)
             if (this.inDungeon) { this.dungeon.removeEnemy(this.enemyPosition.x, this.enemyPosition.y); this.dungeon.playerPos = { ...this.enemyPosition }; this.dungeon.revealAround(this.enemyPosition.x, this.enemyPosition.y) }
-            else { this.world.removeEnemy(this.enemyPosition.x, this.enemyPosition.y); this.world.playerPos = { ...this.enemyPosition } }
+            else if (this.world && this.enemyPosition) { this.world.removeEnemy(this.enemyPosition.x, this.enemyPosition.y); this.world.playerPos = { ...this.enemyPosition } }
             this.log('Victory!', 'reward')
         } else this.log('💀 You died!', 'death')
-        this.inCombat = false; this.currentEnemies = []; this.targetIndex = 0; this.enemyPosition = null; this.combatBuffs = []; this.combatDebuffs = []; this.enemyDots = []; this.saveGame()
+        
+        // Reset combat state
+        this.inCombat = false
+        this.currentEnemies = []
+        this.targetIndex = 0
+        this.enemyPosition = null
+        this.combatBuffs = []
+        this.combatDebuffs = []
+        this.enemyDots = []
+        this.isPartyCombat = false
+        this.partyCombatId = null
+        this.partyMembers = []
+        this.saveGame()
+    }
+    
+    // Join existing party combat
+    joinPartyCombat(combatId, enemies, starterName) {
+        this.log(`⚔️ Joining ${starterName}'s battle!`, 'info')
+        this.startCombat(null, 0, 0, true, combatId, enemies)
     }
 
     addItemToInventory(item) {
