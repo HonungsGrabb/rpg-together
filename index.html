@@ -18,7 +18,6 @@
                 <input type="password" id="login-password" placeholder="Password">
                 <button id="login-btn" class="btn-primary">Login</button>
                 <p>No account? <a href="#" id="show-register">Register</a></p>
-                <button id="clear-storage-btn" class="btn-secondary" style="margin-top: 10px; font-size: 0.8em;">Clear Storage (if login stuck)</button>
             </div>
             <div id="register-form" class="auth-form hidden">
                 <input type="email" id="register-email" placeholder="Email">
@@ -78,7 +77,6 @@
             </div>
             <div class="header-center">
                 <span id="floor-display"></span>
-                <span id="online-count" class="online-count">👥 1</span>
             </div>
             <div class="header-right">
                 <span id="gold-display"></span>
@@ -87,14 +85,8 @@
         </header>
 
         <main class="game-main">
-            <!-- LEFT PANEL: Equipment & Party -->
+            <!-- LEFT PANEL: Equipment -->
             <section class="equipment-section">
-                <h3>👥 Party <span id="party-status"></span></h3>
-                <div id="party-panel" class="party-panel">
-                    <p class="no-party">No party - click players to invite!</p>
-                </div>
-                <div id="party-invites" class="party-invites hidden"></div>
-                
                 <h3>⚔️ Equipment</h3>
                 <div id="equipment-panel" class="equipment-grid"></div>
                 
@@ -142,20 +134,13 @@
                 <div class="controls-hint">WASD / Arrow Keys to move</div>
             </section>
 
-            <!-- RIGHT PANEL: Inventory & Log & Chat -->
+            <!-- RIGHT PANEL: Inventory & Log -->
             <section class="inventory-section">
                 <h3>🎒 Inventory</h3>
                 <div id="inventory-panel" class="inventory-grid"></div>
                 
                 <h3>📜 Log</h3>
                 <div id="game-log" class="game-log"></div>
-                
-                <h3>💬 Chat</h3>
-                <div id="chat-messages" class="chat-messages"></div>
-                <div class="chat-input-row">
-                    <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="100">
-                    <button id="chat-send">→</button>
-                </div>
             </section>
         </main>
     </div>
@@ -224,7 +209,7 @@
     <!-- DUNGEON PROMPT -->
     <div id="dungeon-prompt-modal" class="modal hidden">
         <div class="modal-content prompt-content">
-            <h2>🏚️ Dungeon Entrance</h2>
+            <h2>🏛️ Dungeon Entrance</h2>
             <p>A dark passage leads underground. Enter?</p>
             <div class="prompt-buttons">
                 <button id="btn-enter-dungeon" class="btn-primary">Enter Dungeon</button>
@@ -264,25 +249,6 @@
             <button id="btn-resume" class="btn-primary">Resume</button>
             <button id="btn-save-quit" class="btn-secondary">Save & Quit</button>
         </div>
-    </div>
-
-    <!-- PARTY COMBAT INVITE MODAL -->
-    <div id="party-combat-modal" class="modal hidden">
-        <div class="modal-content prompt-content">
-            <h2>⚔️ Party Combat!</h2>
-            <p id="combat-invite-text"></p>
-            <div class="prompt-buttons">
-                <button id="btn-join-combat" class="btn-primary">Join Fight!</button>
-                <button id="btn-skip-combat" class="btn-secondary">Skip</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- PLAYER CONTEXT MENU -->
-    <div id="player-menu" class="player-menu hidden">
-        <p id="player-menu-name"></p>
-        <button id="btn-invite-player" class="btn-primary">Invite to Party</button>
-        <button id="btn-close-menu" class="btn-secondary">Close</button>
     </div>
 
     <script type="module" src="js/main.js"></script>

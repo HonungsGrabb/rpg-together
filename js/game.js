@@ -2,7 +2,6 @@ import { supabase } from './supabase-client.js'
 import { RACES, CLASSES, ITEMS, SPELLS, EQUIPMENT_SLOT_IDS, getLootDrop, generateRandomItem } from './data.js'
 import { Dungeon } from './dungeon.js'
 import { WorldArea } from './world.js'
-import { Multiplayer } from './multiplayer.js'
 
 const BASE_STATS = { hp: 100, mana: 50, physicalPower: 5, magicPower: 5, defense: 3, magicResist: 3, speed: 5 }
 
@@ -12,25 +11,12 @@ export class Game {
         this.dungeon = null; this.world = null; this.inDungeon = false; this.inCombat = false
         this.currentEnemy = null; this.enemyPosition = null; this.combatBuffs = []; this.combatDebuffs = []
         this.enemyDot = null; this.gameLog = []; this.generatedItems = {}
-        this.multiplayer = new Multiplayer(this)
     }
 
     async loadSaves(userId) {
         this.userId = userId
-        try {
-            const { data, error } = await supabase.from('save_slots').select('*').eq('user_id', userId).order('slot', { ascending: true })
-            if (error) {
-                console.error('loadSaves error:', error)
-                this.saves = []
-                return []
-            }
-            this.saves = data || []
-            return this.saves
-        } catch (e) {
-            console.error('loadSaves exception:', e)
-            this.saves = []
-            return []
-        }
+        const { data } = await supabase.from('save_slots').select('*').eq('user_id', userId).order('slot', { ascending: true })
+        this.saves = data || []; return this.saves
     }
 
     async createNewGame(slot, name, raceId, classId) {
@@ -62,10 +48,6 @@ export class Game {
         this.generatedItems = this.player.generatedItems || {}
         this.world = new WorldArea(20, 15); this.world.generate(this.player.worldX, this.player.worldY, this.player.level)
         this.log(this.player.worldX === 0 && this.player.worldY === 0 ? 'Castle courtyard. Explore to find dungeons!' : `You are in the ${this.world.biome}.`, 'info')
-        
-        // Connect multiplayer
-        await this.multiplayer.connect()
-        
         return true
     }
 
@@ -73,12 +55,6 @@ export class Game {
         if (!this.currentSlot || !this.player) return
         this.player.generatedItems = this.generatedItems
         await supabase.from('save_slots').update({ player_data: this.player, updated_at: new Date().toISOString() }).eq('user_id', this.userId).eq('slot', this.currentSlot)
-        // Update multiplayer presence
-        await this.multiplayer.updatePresence()
-    }
-
-    async disconnectMultiplayer() {
-        await this.multiplayer.disconnect()
     }
 
     async deleteGame(slot) { return !(await supabase.from('save_slots').delete().eq('user_id', this.userId).eq('slot', slot)).error }
@@ -141,9 +117,6 @@ export class Game {
                 this.saveGame()
             }
         }
-        if (result.moved) {
-            this.multiplayer.broadcastMove(this.dungeon.playerPos.x, this.dungeon.playerPos.y)
-        }
         return { success: result.moved }
     }
 
@@ -155,43 +128,33 @@ export class Game {
             this.world.playerPos = { x: result.transition.newX, y: result.transition.newY }
             this.log(`Entered ${this.world.biome} (${this.player.worldX}, ${this.player.worldY})`, 'info')
             this.saveGame()
-            this.multiplayer.onAreaChange()
             return { success: true, newArea: true }
         }
         if (result.encounter) {
             if (result.encounter.type === 'enemy') { this.startCombat(result.encounter.enemy, result.encounter.x, result.encounter.y); return { success: true, combat: true } }
             if (result.encounter.type === 'dungeon') return { success: true, dungeon: true }
         }
-        if (result.moved) {
-            this.multiplayer.broadcastMove(this.world.playerPos.x, this.world.playerPos.y)
-        }
         return { success: result.moved }
     }
 
-    enterDungeon() { this.inDungeon = true; this.player.dungeonFloor = 1; this.dungeon = new Dungeon(17, 13); this.dungeon.generate(this.player.dungeonFloor); this.log(`Entered dungeon - Floor ${this.player.dungeonFloor}`, 'info'); this.saveGame(); this.multiplayer.onAreaChange() }
-    exitDungeon() { this.inDungeon = false; this.player.dungeonFloor = 0; this.player.stats.dungeonsCleared++; this.log('Exited dungeon', 'info'); this.saveGame(); this.multiplayer.onAreaChange() }
-    descendDungeon() { this.player.dungeonFloor++; this.player.stats.floorsExplored++; this.dungeon.generate(this.player.dungeonFloor); this.log(`Descended to floor ${this.player.dungeonFloor}`, 'info'); this.saveGame(); this.multiplayer.onAreaChange() }
+    enterDungeon() {
+        this.inDungeon = true; this.player.dungeonFloor = 1; this.dungeon = new Dungeon(17, 13); this.dungeon.generate(1)
+        this.player.stats.floorsExplored++; this.log(`Entered dungeon floor 1`, 'info'); this.saveGame()
+    }
+
+    descendDungeon() {
+        this.player.dungeonFloor++; this.dungeon.generate(this.player.dungeonFloor)
+        this.player.stats.floorsExplored++; this.log(`Descended to floor ${this.player.dungeonFloor}`, 'info'); this.saveGame()
+    }
+
+    exitDungeon() {
+        this.inDungeon = false; this.dungeon = null; this.log('Returned to surface', 'info'); this.saveGame()
+    }
 
     startCombat(enemy, x, y) {
         this.inCombat = true; this.currentEnemy = { ...enemy }; this.enemyPosition = { x, y }
         this.combatBuffs = []; this.combatDebuffs = []; this.enemyDot = null
         this.log(`⚔️ ${enemy.emoji} ${enemy.name} attacks!`, 'combat')
-    }
-
-    startPartyCombatAsJoiner(enemy) {
-        this.inCombat = true
-        this.currentEnemy = { 
-            ...enemy, 
-            maxHp: enemy.maxHp || enemy.hp,
-            defense: enemy.defense || 5,
-            magicResist: enemy.magicResist || 5,
-            physicalDamage: enemy.physicalDamage || 10,
-            magicDamage: enemy.magicDamage || 0,
-            speed: enemy.speed || 5
-        }
-        this.enemyPosition = null
-        this.combatBuffs = []; this.combatDebuffs = []; this.enemyDot = null
-        this.log(`⚔️ You join the fight against ${enemy.emoji} ${enemy.name}!`, 'combat')
     }
 
     calculatePhysicalDamage(rawDamage, targetDefense) { return Math.max(1, Math.floor(rawDamage - targetDefense * 0.5) + Math.floor(Math.random() * 5) - 2) }

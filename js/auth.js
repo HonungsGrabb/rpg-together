@@ -7,35 +7,18 @@ export async function register(email, password) {
 }
 
 export async function login(email, password) {
-    console.log('Attempting login for:', email)
-    
-    try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        console.log('Login result - data:', data, 'error:', error)
-        if (error) throw error
-        return data
-    } catch (e) {
-        console.error('Login exception:', e)
-        throw e
-    }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw error
+    return data
 }
 
 export async function logout() {
-    try {
-        await supabase.auth.signOut()
-    } catch (e) {
-        console.log('Logout error:', e)
-    }
+    await supabase.auth.signOut()
 }
 
 export async function getSession() {
-    try {
-        const { data: { session } } = await supabase.auth.getSession()
-        return session
-    } catch (e) {
-        console.log('Session check failed:', e)
-        return null
-    }
+    const { data: { session } } = await supabase.auth.getSession()
+    return session
 }
 
 export function onAuthChange(callback) {
