@@ -16,7 +16,17 @@ document.getElementById('show-login')?.addEventListener('click', e => { e.preven
 document.getElementById('login-btn')?.addEventListener('click', async () => {
     const email = document.getElementById('login-email').value, password = document.getElementById('login-password').value
     if (!email || !password) return showAuthMsg('Fill all fields')
-    try { await login(email, password) } catch (e) { showAuthMsg(e.message) }
+    const btn = document.getElementById('login-btn')
+    btn.disabled = true; btn.textContent = 'Logging in...'
+    try { 
+        await login(email, password)
+        showAuthMsg('Success!', false)
+    } catch (e) { 
+        console.error('Login error:', e)
+        showAuthMsg(e.message || 'Login failed. Try again.')
+    } finally {
+        btn.disabled = false; btn.textContent = 'Login'
+    }
 })
 document.getElementById('register-btn')?.addEventListener('click', async () => {
     const email = document.getElementById('register-email').value, password = document.getElementById('register-password').value
@@ -24,7 +34,10 @@ document.getElementById('register-btn')?.addEventListener('click', async () => {
     if (password.length < 6) return showAuthMsg('Password needs 6+ characters')
     try { await register(email, password); showAuthMsg('Account created! Login now.', false); document.getElementById('register-form').classList.add('hidden'); document.getElementById('login-form').classList.remove('hidden') } catch (e) { showAuthMsg(e.message) }
 })
-document.getElementById('logout-btn')?.addEventListener('click', logout)
+document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    await logout()
+    showScreen('auth-screen')
+})
 function showAuthMsg(msg, isError = true) { const el = document.getElementById('auth-message'); el.textContent = msg; el.className = isError ? 'error' : 'success' }
 
 // Save Screen
@@ -611,12 +624,31 @@ function setupInput() {
 
 // Init
 onAuthChange(async (event, session) => { 
-    if (session?.user) await loadSaveScreen(session.user.id)
-    else { await game.disconnectMultiplayer(); showScreen('auth-screen') }
+    console.log('Auth event:', event)
+    if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+        await game.disconnectMultiplayer()
+        showScreen('auth-screen')
+    } else if (session?.user) {
+        await loadSaveScreen(session.user.id)
+    } else {
+        await game.disconnectMultiplayer()
+        showScreen('auth-screen')
+    }
 })
+
 async function init() { 
-    const session = await getSession()
-    if (session?.user) await loadSaveScreen(session.user.id)
-    else showScreen('auth-screen')
+    try {
+        const session = await getSession()
+        if (session?.user) {
+            await loadSaveScreen(session.user.id)
+        } else {
+            showScreen('auth-screen')
+        }
+    } catch (e) {
+        console.error('Init error:', e)
+        // Clear potentially corrupted session
+        localStorage.removeItem('rpg-auth')
+        showScreen('auth-screen')
+    }
 }
 init()
