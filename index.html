@@ -12,16 +12,13 @@
         <div class="auth-container">
             <h1>⚔️ Realm of Shadows ⚔️</h1>
             <p class="subtitle">An Infinite Roguelike Adventure</p>
-            
             <div id="auth-message"></div>
-            
             <div id="login-form" class="auth-form">
                 <input type="email" id="login-email" placeholder="Email">
                 <input type="password" id="login-password" placeholder="Password">
                 <button id="login-btn" class="btn-primary">Login</button>
                 <p>No account? <a href="#" id="show-register">Register</a></p>
             </div>
-            
             <div id="register-form" class="auth-form hidden">
                 <input type="email" id="register-email" placeholder="Email">
                 <input type="password" id="register-password" placeholder="Password (6+ chars)">
@@ -88,82 +85,64 @@
         </header>
 
         <main class="game-main">
-            <section class="stats-panel">
-                <div class="stat-bar hp">
-                    <label>HP</label>
-                    <div class="bar"><div id="hp-bar" class="fill hp-fill"></div></div>
-                    <span id="hp-text"></span>
+            <!-- LEFT PANEL: Equipment -->
+            <section class="equipment-section">
+                <h3>⚔️ Equipment</h3>
+                <div id="equipment-panel" class="equipment-grid"></div>
+                
+                <h3>✨ Skills</h3>
+                <div id="skills-panel" class="skills-list"></div>
+            </section>
+
+            <!-- CENTER: Map & Stats -->
+            <section class="center-section">
+                <div class="stats-bars">
+                    <div class="stat-bar">
+                        <label>❤️ HP</label>
+                        <div class="bar hp-bar-bg"><div id="hp-bar" class="bar-fill hp-bar-fill"></div></div>
+                        <span id="hp-text"></span>
+                    </div>
+                    <div class="stat-bar">
+                        <label>💧 MP</label>
+                        <div class="bar mana-bar-bg"><div id="mana-bar" class="bar-fill mana-bar-fill"></div></div>
+                        <span id="mana-text"></span>
+                    </div>
+                    <div class="stat-bar">
+                        <label>⭐ XP</label>
+                        <div class="bar xp-bar-bg"><div id="xp-bar" class="bar-fill xp-bar-fill"></div></div>
+                        <span id="xp-text"></span>
+                    </div>
                 </div>
-                <div class="stat-bar mana">
-                    <label>MP</label>
-                    <div class="bar"><div id="mana-bar" class="fill mana-fill"></div></div>
-                    <span id="mana-text"></span>
-                </div>
-                <div class="stat-bar xp">
-                    <label>XP</label>
-                    <div class="bar"><div id="xp-bar" class="fill xp-fill"></div></div>
-                    <span id="xp-text"></span>
+
+                <div class="stats-row">
+                    <div class="stat-box"><span class="stat-label">⚔️ Phys</span><span id="stat-phys" class="stat-value">0</span></div>
+                    <div class="stat-box"><span class="stat-label">🔮 Magic</span><span id="stat-magic" class="stat-value">0</span></div>
+                    <div class="stat-box"><span class="stat-label">🛡️ Def</span><span id="stat-def" class="stat-value">0</span></div>
+                    <div class="stat-box"><span class="stat-label">✨ MRes</span><span id="stat-mres" class="stat-value">0</span></div>
+                    <div class="stat-box"><span class="stat-label">💨 Spd</span><span id="stat-spd" class="stat-value">0</span></div>
                 </div>
                 
-                <div class="stats-grid">
-                    <div class="stat">⚔️ <span id="stat-attack">0</span></div>
-                    <div class="stat">🛡️ <span id="stat-defense">0</span></div>
-                    <div class="stat">💨 <span id="stat-speed">0</span></div>
-                    <div class="stat">⭐ Lv.<span id="stat-level">1</span></div>
+                <div class="damage-row">
+                    <div class="dmg-box"><span>⚔️ Wpn Phys:</span><span id="stat-pdmg">0</span></div>
+                    <div class="dmg-box"><span>🔮 Wpn Magic:</span><span id="stat-mdmg">0</span></div>
                 </div>
 
-                <div class="action-buttons">
-                    <button id="btn-equipment" class="action-btn">🎽 Equipment</button>
-                    <button id="btn-skills" class="action-btn">✨ Skills</button>
-                    <button id="btn-inventory" class="action-btn">🎒 Inventory</button>
+                <div class="map-container">
+                    <div id="map-grid" class="map-grid"></div>
                 </div>
+                
+                <div class="controls-hint">WASD / Arrow Keys to move</div>
             </section>
 
-            <section class="map-section">
-                <div id="map-grid" class="map-grid"></div>
-                <div class="controls-hint">
-                    <span>WASD / Arrow Keys to move</span>
-                </div>
-            </section>
-
-            <section class="log-panel">
+            <!-- RIGHT PANEL: Inventory & Log -->
+            <section class="inventory-section">
+                <h3>🎒 Inventory</h3>
+                <div id="inventory-panel" class="inventory-grid"></div>
+                
                 <h3>📜 Log</h3>
-                <div id="game-log"></div>
+                <div id="game-log" class="game-log"></div>
             </section>
         </main>
-    </div>
-
-    <!-- EQUIPMENT MODAL -->
-    <div id="equipment-modal" class="modal hidden">
-        <div class="modal-content equipment-content">
-            <div class="modal-header">
-                <h2>🎽 Equipment</h2>
-                <button id="close-equipment" class="close-btn">✕</button>
-            </div>
-            <div id="equipment-slots-modal" class="equipment-grid"></div>
-        </div>
-    </div>
-
-    <!-- SKILLS MODAL -->
-    <div id="skills-modal" class="modal hidden">
-        <div class="modal-content skills-content">
-            <div class="modal-header">
-                <h2>✨ Skills</h2>
-                <button id="close-skills" class="close-btn">✕</button>
-            </div>
-            <div id="skills-list" class="skills-grid"></div>
-        </div>
-    </div>
-
-    <!-- INVENTORY MODAL -->
-    <div id="inventory-modal" class="modal hidden">
-        <div class="modal-content inventory-content">
-            <div class="modal-header">
-                <h2>🎒 Inventory</h2>
-                <button id="close-inventory" class="close-btn">✕</button>
-            </div>
-            <div id="inventory-grid-modal" class="inventory-grid"></div>
-        </div>
     </div>
 
     <!-- ITEM DETAIL MODAL -->
@@ -186,39 +165,33 @@
     <div id="combat-modal" class="modal hidden">
         <div class="modal-content combat-content">
             <h2>⚔️ Combat!</h2>
-            
             <div class="combat-arena">
                 <div class="combatant player-side">
                     <h3 id="combat-player-name">Player</h3>
-                    <div class="combat-bar">
-                        <div id="combat-player-hp" class="fill hp-fill"></div>
+                    <div class="combat-bar hp-bar-bg">
+                        <div id="combat-player-hp" class="bar-fill hp-bar-fill"></div>
                     </div>
                     <span id="combat-player-hp-text"></span>
-                    <div class="combat-bar mana-combat-bar">
-                        <div id="combat-player-mana" class="fill mana-fill"></div>
+                    <div class="combat-bar mana-bar-bg">
+                        <div id="combat-player-mana" class="bar-fill mana-bar-fill"></div>
                     </div>
                     <span id="combat-player-mana-text"></span>
                 </div>
-                
                 <div class="vs">VS</div>
-                
                 <div class="combatant enemy-side">
                     <span id="combat-enemy-emoji" class="enemy-emoji"></span>
                     <h3 id="combat-enemy-name">Enemy</h3>
-                    <div class="combat-bar">
-                        <div id="combat-enemy-hp" class="fill enemy-fill"></div>
+                    <div class="combat-bar enemy-bar-bg">
+                        <div id="combat-enemy-hp" class="bar-fill enemy-bar-fill"></div>
                     </div>
                     <span id="combat-enemy-hp-text"></span>
                 </div>
             </div>
-            
             <div id="combat-log-modal" class="combat-log"></div>
-            
             <div id="combat-spells" class="combat-spells"></div>
-            
             <div class="combat-actions">
                 <button id="btn-attack" class="btn-primary">⚔️ Attack</button>
-                <button id="btn-use-potion" class="btn-secondary">🧪 Use Potion</button>
+                <button id="btn-use-potion" class="btn-secondary">🧪 Potion</button>
                 <button id="btn-flee" class="btn-danger">💨 Flee</button>
             </div>
         </div>
@@ -233,7 +206,7 @@
         </div>
     </div>
 
-    <!-- DUNGEON ENTRANCE PROMPT -->
+    <!-- DUNGEON PROMPT -->
     <div id="dungeon-prompt-modal" class="modal hidden">
         <div class="modal-content prompt-content">
             <h2>🏚️ Dungeon Entrance</h2>
