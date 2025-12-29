@@ -57,6 +57,8 @@ async function loadExistingGame(slot) {
         renderMap()
         setupInput()
         updateOnlineCount()
+        renderPartyPanel(game.multiplayer.party)
+        renderPartyInvites(game.multiplayer.pendingInvites)
     } 
 }
 
@@ -101,6 +103,9 @@ document.getElementById('start-game-btn')?.addEventListener('click', async () =>
 // ============================================
 // MULTIPLAYER
 // ============================================
+let selectedPlayer = null // For player context menu
+let pendingCombatInvite = null // For party combat
+
 function setupMultiplayerCallbacks() {
     game.multiplayer.onPlayersUpdate = (players) => {
         renderMap()
@@ -108,6 +113,19 @@ function setupMultiplayerCallbacks() {
     }
     game.multiplayer.onChatMessage = (messages) => {
         renderChat(messages)
+    }
+    game.multiplayer.onPartyUpdate = (party) => {
+        renderPartyPanel(party)
+    }
+    game.multiplayer.onPartyInvite = (invites) => {
+        renderPartyInvites(invites)
+    }
+    game.multiplayer.onCombatInvite = (payload) => {
+        showPartyCombatInvite(payload)
+    }
+    game.multiplayer.onPartyCombatUpdate = (combat) => {
+        // Handle party combat updates
+        if (combat) updatePartyCombatUI(combat)
     }
 }
 
@@ -117,11 +135,155 @@ function updateOnlineCount() {
     if (el) el.textContent = `👥 ${count}`
 }
 
+function renderPartyPanel(party) {
+    const panel = document.getElementById('party-panel')
+    const status = document.getElementById('party-status')
+    if (!panel) return
+
+    if (!party || party.members.length === 0) {
+        panel.innerHTML = '<p class="no-party">No party - click players on map to invite!</p>'
+        if (status) status.textContent = ''
+        return
+    }
+
+    if (status) status.textContent = `(${party.members.length}/4)`
+
+    let html = ''
+    for (const member of party.members) {
+        const classes = ['party-member']
+        if (member.isLeader) classes.push('is-leader')
+        if (member.isMe) classes.push('is-me')
+        
+        const hpPercent = member.online ? Math.round((member.online.hp / member.online.max_hp) * 100) : '?'
+        
+        html += `
+            <div class="${classes.join(' ')}">
+                <span class="member-icon">${RACES[member.online?.race]?.emoji || '👤'}</span>
+                <span class="member-name">${member.player_name}</span>
+                ${member.isLeader ? '<span class="leader-badge">👑</span>' : ''}
+                <span class="member-hp">${hpPercent}%</span>
+            </div>
+        `
+    }
+
+    if (party.members.length > 1) {
+        html += '<button class="btn-leave-party" onclick="leaveParty()">Leave Party</button>'
+    }
+
+    panel.innerHTML = html
+}
+
+function renderPartyInvites(invites) {
+    const container = document.getElementById('party-invites')
+    if (!container) return
+
+    if (!invites || invites.length === 0) {
+        container.classList.add('hidden')
+        container.innerHTML = ''
+        return
+    }
+
+    container.classList.remove('hidden')
+    container.innerHTML = '<h4 style="margin:0 0 6px 0;font-size:11px;">📨 Party Invites</h4>' + invites.map(inv => `
+        <div class="party-invite">
+            <p><strong>${inv.from_name}</strong> invited you to a party!</p>
+            <div class="invite-buttons">
+                <button class="btn-primary" onclick="respondToInvite('${inv.id}', true)">Accept</button>
+                <button class="btn-danger" onclick="respondToInvite('${inv.id}', false)">Decline</button>
+            </div>
+        </div>
+    `).join('')
+}
+
+// Global functions for onclick handlers
+window.respondToInvite = async (inviteId, accept) => {
+    await game.multiplayer.respondToInvite(inviteId, accept)
+}
+
+window.leaveParty = async () => {
+    if (confirm('Leave party?')) {
+        await game.multiplayer.leaveParty()
+    }
+}
+
+// Player click handling for invites
+function handlePlayerClick(player, event) {
+    selectedPlayer = player
+    const menu = document.getElementById('player-menu')
+    if (!menu) return
+
+    // Position menu near click
+    menu.style.left = `${event.clientX}px`
+    menu.style.top = `${event.clientY}px`
+    menu.classList.remove('hidden')
+
+    // Update invite button based on party status
+    const inviteBtn = document.getElementById('btn-invite-player')
+    if (inviteBtn) {
+        const inSameParty = game.multiplayer.party?.members.some(m => m.user_id === player.user_id)
+        inviteBtn.textContent = inSameParty ? 'Already in party' : `Invite ${player.player_name}`
+        inviteBtn.disabled = inSameParty
+    }
+}
+
+document.getElementById('btn-invite-player')?.addEventListener('click', async () => {
+    if (selectedPlayer) {
+        await game.multiplayer.sendPartyInvite(selectedPlayer.user_id, selectedPlayer.player_name)
+    }
+    document.getElementById('player-menu')?.classList.add('hidden')
+    selectedPlayer = null
+})
+
+document.getElementById('btn-close-menu')?.addEventListener('click', () => {
+    document.getElementById('player-menu')?.classList.add('hidden')
+    selectedPlayer = null
+})
+
+// Close menu when clicking elsewhere
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('player-menu')
+    if (menu && !menu.contains(e.target) && !e.target.classList.contains('tile-other-player')) {
+        menu.classList.add('hidden')
+        selectedPlayer = null
+    }
+})
+
+// Party combat invite
+function showPartyCombatInvite(payload) {
+    pendingCombatInvite = payload
+    document.getElementById('combat-invite-text').textContent = 
+        `${payload.initiatorName} started fighting ${payload.enemy.name}! Join them?`
+    showModal('party-combat-modal')
+}
+
+document.getElementById('btn-join-combat')?.addEventListener('click', async () => {
+    if (pendingCombatInvite) {
+        await game.multiplayer.joinPartyCombat(pendingCombatInvite.combatId)
+        // Start combat UI on our end too
+        game.startCombat(pendingCombatInvite.enemy, 0, 0)
+        hideModal('party-combat-modal')
+        showCombatUI()
+    }
+    pendingCombatInvite = null
+})
+
+document.getElementById('btn-skip-combat')?.addEventListener('click', () => {
+    hideModal('party-combat-modal')
+    pendingCombatInvite = null
+})
+
+function updatePartyCombatUI(combat) {
+    // Update combat UI with party info if in party combat
+    console.log('Party combat update:', combat)
+}
+
 function renderChat(messages) {
     const container = document.getElementById('chat-messages')
     if (!container) return
     container.innerHTML = messages.slice(-20).map(m => {
-        const cls = m.isLocal ? 'chat-local' : 'chat-nearby'
+        let cls = 'chat-nearby'
+        if (m.isOwn) cls = 'chat-own'
+        else if (m.isLocal) cls = 'chat-local'
         return `<p class="${cls}"><strong>${m.name}:</strong> ${m.message}</p>`
     }).join('')
     container.scrollTop = container.scrollHeight
@@ -190,7 +352,12 @@ function renderOtherPlayers() {
                 const tile = tiles[player.pos_x]
                 tile.classList.add('tile-other-player')
                 tile.textContent = RACES[player.race]?.emoji || '👤'
-                tile.title = `${player.player_name} (Lv.${player.level})`
+                tile.title = `${player.player_name} (Lv.${player.level}) - Click to interact`
+                // Add click handler for player interaction
+                tile.onclick = (e) => {
+                    e.stopPropagation()
+                    handlePlayerClick(player, e)
+                }
             }
         }
     }
@@ -289,6 +456,12 @@ function showCombatUI() {
     document.getElementById('combat-enemy-emoji').textContent = e.emoji
     document.getElementById('combat-enemy-name').textContent = e.name
     game.multiplayer.broadcastCombat('is fighting', e.name)
+    
+    // If in party, start party combat session
+    if (game.multiplayer.isInParty()) {
+        game.multiplayer.startPartyCombat(e, game.enemyPosition?.x || 0, game.enemyPosition?.y || 0)
+    }
+    
     renderCombatSpells(); document.getElementById('combat-log-modal').innerHTML = ''
     updateCombatUI(); showModal('combat-modal')
 }

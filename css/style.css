@@ -168,6 +168,7 @@ button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; 
 .chat-messages p { margin-bottom: 3px; }
 .chat-messages .chat-local { color: var(--text-primary); }
 .chat-messages .chat-nearby { color: var(--text-secondary); }
+.chat-messages .chat-own { color: var(--accent-blue); }
 .chat-input-row { display: flex; gap: 4px; margin-top: 6px; }
 .chat-input-row input { flex: 1; padding: 6px 8px; border: 1px solid var(--bg-light); border-radius: 4px; background: var(--bg-dark); color: var(--text-primary); font-size: 11px; }
 .chat-input-row button { padding: 6px 12px; background: var(--accent-blue); color: #fff; border-radius: 4px; }
@@ -176,8 +177,33 @@ button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; 
 .online-count { color: var(--accent-green); font-size: 12px; margin-left: 12px; }
 
 /* Other players on map */
-.tile-other-player { color: var(--accent-green) !important; font-size: 14px !important; animation: pulse 2s infinite; }
+.tile-other-player { color: var(--accent-green) !important; font-size: 14px !important; animation: pulse 2s infinite; cursor: pointer; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* Party Panel */
+.party-panel { background: var(--bg-dark); border-radius: 4px; padding: 8px; margin-bottom: 12px; min-height: 40px; }
+.party-panel .no-party { color: var(--text-secondary); font-size: 11px; text-align: center; }
+.party-member { display: flex; align-items: center; gap: 6px; padding: 4px 6px; background: var(--bg-medium); border-radius: 4px; margin-bottom: 4px; font-size: 11px; }
+.party-member.is-leader { border-left: 2px solid var(--accent-gold); }
+.party-member.is-me { background: var(--bg-light); }
+.party-member .member-icon { font-size: 16px; }
+.party-member .member-name { flex: 1; }
+.party-member .member-hp { color: var(--hp-color); font-size: 10px; }
+.party-member .leader-badge { color: var(--accent-gold); font-size: 10px; }
+#party-status { font-size: 10px; color: var(--text-secondary); }
+.btn-leave-party { background: var(--accent-red); color: #fff; padding: 4px 8px; font-size: 10px; margin-top: 6px; width: 100%; }
+
+/* Party Invites */
+.party-invites { background: var(--bg-dark); border-radius: 4px; padding: 8px; margin-bottom: 12px; border: 1px solid var(--accent-gold); }
+.party-invite { display: flex; flex-direction: column; gap: 6px; padding: 6px; background: var(--bg-medium); border-radius: 4px; margin-bottom: 6px; }
+.party-invite p { font-size: 11px; margin: 0; }
+.party-invite .invite-buttons { display: flex; gap: 4px; }
+.party-invite .invite-buttons button { flex: 1; padding: 4px 8px; font-size: 10px; }
+
+/* Player Context Menu */
+.player-menu { position: fixed; background: var(--bg-medium); border: 1px solid var(--bg-light); border-radius: 8px; padding: 8px; z-index: 200; display: flex; flex-direction: column; gap: 6px; min-width: 140px; }
+.player-menu button { width: 100%; font-size: 12px; padding: 8px; }
+.player-menu.hidden { display: none; }
 
 /* Modals */
 .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }

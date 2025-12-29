@@ -86,8 +86,14 @@
         </header>
 
         <main class="game-main">
-            <!-- LEFT PANEL: Equipment -->
+            <!-- LEFT PANEL: Equipment & Party -->
             <section class="equipment-section">
+                <h3>👥 Party <span id="party-status"></span></h3>
+                <div id="party-panel" class="party-panel">
+                    <p class="no-party">No party - invite nearby players!</p>
+                </div>
+                <div id="party-invites" class="party-invites hidden"></div>
+                
                 <h3>⚔️ Equipment</h3>
                 <div id="equipment-panel" class="equipment-grid"></div>
                 
@@ -257,6 +263,24 @@
             <button id="btn-resume" class="btn-primary">Resume</button>
             <button id="btn-save-quit" class="btn-secondary">Save & Quit</button>
         </div>
+    </div>
+
+    <!-- PARTY COMBAT INVITE MODAL -->
+    <div id="party-combat-modal" class="modal hidden">
+        <div class="modal-content prompt-content">
+            <h2>⚔️ Party Combat!</h2>
+            <p><span id="combat-invite-text"></span></p>
+            <div class="prompt-buttons">
+                <button id="btn-join-combat" class="btn-primary">Join Fight!</button>
+                <button id="btn-skip-combat" class="btn-secondary">Skip</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PLAYER CONTEXT MENU -->
+    <div id="player-menu" class="player-menu hidden">
+        <button id="btn-invite-player" class="btn-primary">Invite to Party</button>
+        <button id="btn-close-menu" class="btn-secondary">Close</button>
     </div>
 
     <script type="module" src="js/main.js"></script>
