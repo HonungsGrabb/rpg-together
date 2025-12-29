@@ -14,18 +14,22 @@ function hideAllModals() { document.querySelectorAll('.modal').forEach(m => m.cl
 document.getElementById('show-register')?.addEventListener('click', e => { e.preventDefault(); document.getElementById('login-form').classList.add('hidden'); document.getElementById('register-form').classList.remove('hidden') })
 document.getElementById('show-login')?.addEventListener('click', e => { e.preventDefault(); document.getElementById('register-form').classList.add('hidden'); document.getElementById('login-form').classList.remove('hidden') })
 document.getElementById('login-btn')?.addEventListener('click', async () => {
-    const email = document.getElementById('login-email').value, password = document.getElementById('login-password').value
+    const email = document.getElementById('login-email').value
+    const password = document.getElementById('login-password').value
     if (!email || !password) return showAuthMsg('Fill all fields')
-    const btn = document.getElementById('login-btn')
-    btn.disabled = true; btn.textContent = 'Logging in...'
+    
+    showAuthMsg('Logging in...', false)
+    console.log('Login clicked, calling login()')
     try { 
-        await login(email, password)
-        showAuthMsg('Success!', false)
+        const result = await login(email, password)
+        console.log('Login returned:', result)
+        if (result?.user) {
+            showAuthMsg('Success! Loading...', false)
+            await loadSaveScreen(result.user.id)
+        }
     } catch (e) { 
         console.error('Login error:', e)
-        showAuthMsg(e.message || 'Login failed. Try again.')
-    } finally {
-        btn.disabled = false; btn.textContent = 'Login'
+        showAuthMsg(e.message || 'Login failed')
     }
 })
 document.getElementById('register-btn')?.addEventListener('click', async () => {
@@ -36,15 +40,33 @@ document.getElementById('register-btn')?.addEventListener('click', async () => {
 })
 document.getElementById('logout-btn')?.addEventListener('click', async () => {
     await logout()
-    showScreen('auth-screen')
+})
+document.getElementById('clear-storage-btn')?.addEventListener('click', () => {
+    localStorage.clear()
+    sessionStorage.clear()
+    showAuthMsg('Storage cleared! Try logging in now.', false)
 })
 function showAuthMsg(msg, isError = true) { const el = document.getElementById('auth-message'); el.textContent = msg; el.className = isError ? 'error' : 'success' }
 
 // Save Screen
 async function loadSaveScreen(userId) { 
-    await game.disconnectMultiplayer()
+    console.log('loadSaveScreen called for:', userId)
+    try {
+        await game.disconnectMultiplayer()
+        console.log('disconnectMultiplayer done')
+    } catch(e) {
+        console.log('disconnectMultiplayer error (ignoring):', e)
+    }
     showScreen('save-screen')
-    renderSaveSlots(await game.loadSaves(userId)) 
+    console.log('showScreen done')
+    try {
+        const saves = await game.loadSaves(userId)
+        console.log('loadSaves done:', saves)
+        renderSaveSlots(saves)
+    } catch(e) {
+        console.log('loadSaves error:', e)
+        renderSaveSlots([])
+    }
 }
 
 function renderSaveSlots(saves) {
@@ -624,11 +646,8 @@ function setupInput() {
 
 // Init
 onAuthChange(async (event, session) => { 
-    console.log('Auth event:', event)
-    if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
-        await game.disconnectMultiplayer()
-        showScreen('auth-screen')
-    } else if (session?.user) {
+    console.log('Auth event:', event, session?.user?.email)
+    if (session?.user) {
         await loadSaveScreen(session.user.id)
     } else {
         await game.disconnectMultiplayer()
@@ -637,17 +656,11 @@ onAuthChange(async (event, session) => {
 })
 
 async function init() { 
-    try {
-        const session = await getSession()
-        if (session?.user) {
-            await loadSaveScreen(session.user.id)
-        } else {
-            showScreen('auth-screen')
-        }
-    } catch (e) {
-        console.error('Init error:', e)
-        // Clear potentially corrupted session
-        localStorage.removeItem('rpg-auth')
+    const session = await getSession()
+    console.log('Init session:', session?.user?.email)
+    if (session?.user) {
+        await loadSaveScreen(session.user.id)
+    } else {
         showScreen('auth-screen')
     }
 }

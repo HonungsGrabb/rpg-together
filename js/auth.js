@@ -7,37 +7,33 @@ export async function register(email, password) {
 }
 
 export async function login(email, password) {
-    // Clear any stale session first
-    try {
-        await supabase.auth.signOut()
-    } catch (e) {
-        // Ignore signout errors
-    }
+    console.log('Attempting login for:', email)
     
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
-    return data
+    try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        console.log('Login result - data:', data, 'error:', error)
+        if (error) throw error
+        return data
+    } catch (e) {
+        console.error('Login exception:', e)
+        throw e
+    }
 }
 
 export async function logout() {
-    const { error } = await supabase.auth.signOut()
-    // Clear local storage as backup
-    localStorage.removeItem('rpg-auth')
-    if (error) throw error
+    try {
+        await supabase.auth.signOut()
+    } catch (e) {
+        console.log('Logout error:', e)
+    }
 }
 
 export async function getSession() {
     try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        if (error) {
-            console.log('Session error, clearing:', error)
-            localStorage.removeItem('rpg-auth')
-            return null
-        }
+        const { data: { session } } = await supabase.auth.getSession()
         return session
     } catch (e) {
         console.log('Session check failed:', e)
-        localStorage.removeItem('rpg-auth')
         return null
     }
 }

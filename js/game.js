@@ -17,8 +17,20 @@ export class Game {
 
     async loadSaves(userId) {
         this.userId = userId
-        const { data } = await supabase.from('save_slots').select('*').eq('user_id', userId).order('slot', { ascending: true })
-        this.saves = data || []; return this.saves
+        try {
+            const { data, error } = await supabase.from('save_slots').select('*').eq('user_id', userId).order('slot', { ascending: true })
+            if (error) {
+                console.error('loadSaves error:', error)
+                this.saves = []
+                return []
+            }
+            this.saves = data || []
+            return this.saves
+        } catch (e) {
+            console.error('loadSaves exception:', e)
+            this.saves = []
+            return []
+        }
     }
 
     async createNewGame(slot, name, raceId, classId) {

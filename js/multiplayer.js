@@ -120,8 +120,12 @@ export class Multiplayer {
 
     async disconnect() {
         if (this.channel) {
-            this.broadcastLeave()
-            await this.channel.unsubscribe()
+            try {
+                this.broadcastLeave()
+                await this.channel.unsubscribe()
+            } catch (e) {
+                console.log('Channel unsubscribe error (ignoring):', e)
+            }
             this.channel = null
         }
 
@@ -130,11 +134,21 @@ export class Multiplayer {
 
         // Leave party if in one
         if (this.party) {
-            await this.leaveParty()
+            try {
+                await this.leaveParty()
+            } catch (e) {
+                console.log('Leave party error (ignoring):', e)
+            }
         }
 
         // Remove from online players
-        await supabase.from('online_players').delete().eq('user_id', this.game.userId)
+        if (this.game.userId) {
+            try {
+                await supabase.from('online_players').delete().eq('user_id', this.game.userId)
+            } catch (e) {
+                console.log('Remove online player error (ignoring):', e)
+            }
+        }
     }
 
     async updatePresence() {
