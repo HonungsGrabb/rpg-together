@@ -277,6 +277,14 @@ export class Game {
                 if (enemy.hp <= 0) {
                     this.log(`${enemy.emoji} ${enemy.name} defeated!`, 'reward')
                     
+                    // Award XP/gold to this player too (party shares rewards)
+                    this.player.xp += enemy.xp
+                    this.player.gold += enemy.gold
+                    this.player.stats.totalGold += enemy.gold
+                    this.player.stats.enemiesKilled++
+                    this.log(`+${enemy.xp} XP, +${enemy.gold} gold`, 'reward')
+                    this.checkLevelUp()
+                    
                     if (this.getAliveEnemies().length === 0) {
                         this.endCombat(true)
                         return { allDefeated: true }
@@ -302,19 +310,19 @@ export class Game {
             this.log(`${target.emoji} ${target.name} defeated!`, 'reward')
             result.enemyDefeated = true
             
+            // Award XP/gold for this enemy
+            this.player.xp += target.xp
+            this.player.gold += target.gold
+            this.player.stats.totalGold += target.gold
+            this.player.stats.enemiesKilled++
+            this.log(`+${target.xp} XP, +${target.gold} gold`, 'reward')
+            this.checkLevelUp()
+            
             // Check if all enemies defeated
             if (this.getAliveEnemies().length === 0) {
                 result.allDefeated = true
                 this.endCombat(true)
             } else {
-                // Award partial XP/gold for this enemy
-                this.player.xp += target.xp
-                this.player.gold += target.gold
-                this.player.stats.totalGold += target.gold
-                this.player.stats.enemiesKilled++
-                this.log(`+${target.xp} XP, +${target.gold} gold`, 'reward')
-                this.checkLevelUp()
-                
                 // Switch to next alive enemy
                 this.targetIndex = this.currentEnemies.findIndex(e => e.hp > 0)
             }
@@ -333,6 +341,12 @@ export class Game {
             this.log(`${enemy.name} hits you for ${dmg}!${magDmg > 0 ? ` (${physDmg} phys + ${magDmg} magic)` : ''}`, 'combat')
         }
         result.enemyDamage = totalDamage
+        
+        // Broadcast our HP to party members
+        if (this.isPartyCombat && totalDamage > 0) {
+            this.multiplayer.broadcastPlayerDamage()
+        }
+        
         if (this.player.hp <= 0) { 
             result.playerDefeated = true
             this.player.hp = 0

@@ -306,6 +306,15 @@ button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; 
 .btn-join-combat { width: 100%; background: linear-gradient(135deg, #cc3333 0%, #991111 100%); border: none; padding: 10px; font-size: 14px; font-weight: bold; animation: none; }
 .btn-join-combat:hover { background: linear-gradient(135deg, #dd4444 0%, #aa2222 100%); transform: scale(1.02); }
 
+/* Multiple players in combat */
+.players-container { display: flex; flex-direction: column; gap: 10px; min-width: 140px; }
+.players-container .combatant { background: var(--bg-dark); padding: 10px; border-radius: 6px; text-align: center; border: 2px solid transparent; }
+.players-container .combatant.is-you { border-color: var(--accent-blue); }
+.players-container .combatant.is-ally { border-color: var(--accent-green); }
+.players-container .combatant h4 { font-size: 12px; margin: 0 0 6px 0; color: var(--text-primary); }
+.players-container .player-hp-text, .players-container .player-mana-text { font-size: 10px; color: var(--text-secondary); display: block; }
+.players-container .combat-bar { height: 6px; margin: 3px 0; }
+
 /* Party member indicators in combat */
 .party-combat-members { margin-top: 10px; padding: 8px; background: var(--bg-dark); border-radius: 6px; }
 .party-combat-members h5 { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; }

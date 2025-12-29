@@ -117,6 +117,10 @@ export class Multiplayer {
             this.handlePartyCombatAction(payload)
         })
 
+        this.channel.on('broadcast', { event: 'party-combat-player-damage' }, ({ payload }) => {
+            this.handlePartyCombatPlayerDamage(payload)
+        })
+
         this.channel.on('broadcast', { event: 'party-combat-end' }, ({ payload }) => {
             this.handlePartyCombatEnd(payload)
         })
@@ -735,6 +739,8 @@ export class Multiplayer {
                 combatId,
                 userId: this.game.userId,
                 starterName: this.game.player.name,
+                starterHp: this.game.player.hp,
+                starterMaxHp: this.game.getMaxHp(),
                 enemies: enemies.map(e => ({
                     name: e.name,
                     emoji: e.emoji,
@@ -764,7 +770,9 @@ export class Multiplayer {
             payload: {
                 combatId,
                 userId: this.game.userId,
-                playerName: this.game.player.name
+                playerName: this.game.player.name,
+                hp: this.game.player.hp,
+                maxHp: this.game.getMaxHp()
             }
         })
     }
@@ -772,13 +780,34 @@ export class Multiplayer {
     broadcastCombatAction(action) {
         if (!this.channel || !this.game.isPartyCombat) return
         
+        // Always include current HP in actions
         this.channel.send({
             type: 'broadcast',
             event: 'party-combat-action',
             payload: {
                 combatId: this.game.partyCombatId,
                 userId: this.game.userId,
+                playerName: this.game.player.name,
+                playerHp: this.game.player.hp,
+                playerMaxHp: this.game.getMaxHp(),
                 ...action
+            }
+        })
+    }
+    
+    // Broadcast when you take damage
+    broadcastPlayerDamage() {
+        if (!this.channel || !this.game.isPartyCombat) return
+        
+        this.channel.send({
+            type: 'broadcast',
+            event: 'party-combat-player-damage',
+            payload: {
+                combatId: this.game.partyCombatId,
+                userId: this.game.userId,
+                playerName: this.game.player.name,
+                hp: this.game.player.hp,
+                maxHp: this.game.getMaxHp()
             }
         })
     }
@@ -811,11 +840,13 @@ export class Multiplayer {
             return
         }
         
-        // Store pending combat invite
+        // Store pending combat invite with starter info
         this.pendingCombatInvite = {
             combatId: payload.combatId,
-            userId: payload.userId,
+            oderId: payload.userId,
             starterName: payload.starterName,
+            starterHp: payload.starterHp,
+            starterMaxHp: payload.starterMaxHp,
             enemies: payload.enemies,
             x: payload.x,
             y: payload.y
@@ -840,8 +871,36 @@ export class Multiplayer {
         this.game.log(`${payload.playerName} joined the battle!`, 'info')
         this.game.partyMembers.push({
             userId: payload.userId,
-            name: payload.playerName
+            name: payload.playerName,
+            hp: payload.hp || 100,
+            maxHp: payload.maxHp || 100
         })
+        
+        // Update UI
+        if (this.onPartyCombatAction) {
+            this.onPartyCombatAction({ type: 'join' }, {})
+        }
+    }
+    
+    // Handler: Party member took damage
+    handlePartyCombatPlayerDamage(payload) {
+        console.log('Received party-combat-player-damage:', payload)
+        
+        if (!this.game.isPartyCombat) return
+        if (payload.combatId !== this.game.partyCombatId) return
+        if (payload.userId === this.game.userId) return
+        
+        // Update party member HP
+        const member = this.game.partyMembers.find(m => m.userId === payload.userId)
+        if (member) {
+            member.hp = payload.hp
+            member.maxHp = payload.maxHp
+            
+            // Update UI
+            if (this.onPartyCombatAction) {
+                this.onPartyCombatAction({ type: 'playerDamage' }, {})
+            }
+        }
     }
     
     // Handler: Combat action from party member
@@ -851,6 +910,13 @@ export class Multiplayer {
         if (!this.game.isPartyCombat) return
         if (payload.combatId !== this.game.partyCombatId) return
         if (payload.userId === this.game.userId) return
+        
+        // Update party member HP from action payload
+        const member = this.game.partyMembers.find(m => m.userId === payload.userId)
+        if (member && payload.playerHp !== undefined) {
+            member.hp = payload.playerHp
+            member.maxHp = payload.playerMaxHp
+        }
         
         // Apply the damage to our local enemy state
         if (payload.targetIndex !== undefined && payload.damage !== undefined) {
@@ -909,8 +975,16 @@ export class Multiplayer {
         const invite = this.pendingCombatInvite
         this.pendingCombatInvite = null
         
-        // Join the combat
+        // Join the combat and add the starter as a party member
         this.game.joinPartyCombat(invite.combatId, invite.enemies, invite.starterName)
+        
+        // Add combat starter to party members list so they show in UI
+        this.game.partyMembers.push({
+            userId: invite.oderId,
+            name: invite.starterName,
+            hp: invite.starterHp || 100,
+            maxHp: invite.starterMaxHp || 100
+        })
         
         // Broadcast that we joined
         this.broadcastCombatJoin(invite.combatId)

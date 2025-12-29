@@ -597,6 +597,47 @@ function showCombatUI() {
     showModal('combat-modal')
 }
 
+function renderPlayers() {
+    const container = document.getElementById('players-container')
+    if (!container) return
+    container.innerHTML = ''
+    
+    const p = game.player
+    
+    // Render yourself first
+    const youDiv = document.createElement('div')
+    youDiv.className = 'combatant player-side is-you'
+    youDiv.innerHTML = `
+        <h4>${p.name} (You)</h4>
+        <div class="combat-bar hp-bar-bg">
+            <div class="bar-fill hp-bar-fill" style="width:${(p.hp / game.getMaxHp()) * 100}%"></div>
+        </div>
+        <span class="player-hp-text">HP: ${p.hp}/${game.getMaxHp()}</span>
+        <div class="combat-bar mana-bar-bg">
+            <div class="bar-fill mana-bar-fill" style="width:${(p.mana / game.getMaxMana()) * 100}%"></div>
+        </div>
+        <span class="player-mana-text">MP: ${p.mana}/${game.getMaxMana()}</span>
+    `
+    container.appendChild(youDiv)
+    
+    // Render party members in combat
+    if (game.partyMembers && game.partyMembers.length > 0) {
+        for (const member of game.partyMembers) {
+            const memberDiv = document.createElement('div')
+            memberDiv.className = 'combatant player-side is-ally'
+            const hpPercent = member.maxHp ? (member.hp / member.maxHp) * 100 : 100
+            memberDiv.innerHTML = `
+                <h4>${member.name}</h4>
+                <div class="combat-bar hp-bar-bg">
+                    <div class="bar-fill hp-bar-fill" style="width:${hpPercent}%"></div>
+                </div>
+                <span class="player-hp-text">HP: ${member.hp || '?'}/${member.maxHp || '?'}</span>
+            `
+            container.appendChild(memberDiv)
+        }
+    }
+}
+
 function renderEnemies() {
     const container = document.getElementById('enemies-container')
     container.innerHTML = ''
@@ -629,11 +670,8 @@ function renderEnemies() {
 }
 
 function updateCombatUI() {
-    const p = game.player
-    document.getElementById('combat-player-hp').style.width = `${(p.hp / game.getMaxHp()) * 100}%`
-    document.getElementById('combat-player-hp-text').textContent = `HP: ${p.hp}/${game.getMaxHp()}`
-    document.getElementById('combat-player-mana').style.width = `${(p.mana / game.getMaxMana()) * 100}%`
-    document.getElementById('combat-player-mana-text').textContent = `MP: ${p.mana}/${game.getMaxMana()}`
+    // Update players display (includes you + party members)
+    renderPlayers()
     
     // Update enemies display
     renderEnemies()
