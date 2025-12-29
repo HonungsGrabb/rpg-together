@@ -14,6 +14,11 @@ export class Multiplayer {
         this.pendingInvites = []
         this.onPartyUpdate = null
         this.onPartyInvite = null
+        
+        // Party combat
+        this.partyCombat = null // { oderId, odererName, odername, enemy }
+        this.onCombatInvite = null
+        this.onCombatUpdate = null // Called when ally deals damage
     }
 
     async connect() {
@@ -73,6 +78,24 @@ export class Multiplayer {
         this.channel.on('broadcast', { event: 'party-update' }, ({ payload }) => {
             if (this.party && payload.partyId === this.party.id) {
                 this.handlePartyUpdate(payload)
+            }
+        })
+
+        this.channel.on('broadcast', { event: 'party-combat-start' }, ({ payload }) => {
+            if (this.party && payload.partyId === this.party.id && payload.oderId !== this.game.userId) {
+                this.handlePartyCombatStart(payload)
+            }
+        })
+
+        this.channel.on('broadcast', { event: 'party-combat-action' }, ({ payload }) => {
+            if (this.partyCombat && payload.oderId !== this.game.userId) {
+                this.handlePartyCombatAction(payload)
+            }
+        })
+
+        this.channel.on('broadcast', { event: 'party-combat-end' }, ({ payload }) => {
+            if (this.partyCombat) {
+                this.handlePartyCombatEnd(payload)
             }
         })
 
@@ -630,5 +653,174 @@ export class Multiplayer {
 
     isPartyLeader() {
         return this.party && this.party.leader_id === this.game.userId
+    }
+
+    // ============================================
+    // PARTY COMBAT
+    // ============================================
+
+    startPartyCombat(enemy) {
+        if (!this.isInParty()) return
+
+        this.partyCombat = {
+            oderId: this.game.userId,
+            odererName: this.game.player.name,
+            enemy: { ...enemy },
+            participants: [{
+                oderId: this.game.userId,
+                name: this.game.player.name,
+                oderedCombat: true
+            }],
+            active: true
+        }
+
+        this.channel?.send({
+            type: 'broadcast',
+            event: 'party-combat-start',
+            payload: {
+                partyId: this.party.id,
+                oderId: this.game.userId,
+                odererName: this.game.player.name,
+                enemy: {
+                    name: enemy.name,
+                    emoji: enemy.emoji,
+                    hp: enemy.hp,
+                    maxHp: enemy.maxHp
+                },
+                worldX: this.game.player.worldX,
+                worldY: this.game.player.worldY
+            }
+        })
+    }
+
+    handlePartyCombatStart(payload) {
+        this.game.log(`${payload.odererName} is fighting ${payload.enemy.name}!`, 'combat')
+        
+        this.partyCombat = {
+            oderId: payload.oderId,
+            odererName: payload.odererName,
+            enemy: payload.enemy,
+            participants: [{
+                oderId: payload.oderId,
+                name: payload.odererName,
+                oderedCombat: true
+            }],
+            active: true,
+            worldX: payload.worldX,
+            worldY: payload.worldY
+        }
+
+        if (this.onCombatInvite) {
+            this.onCombatInvite(payload)
+        }
+    }
+
+    joinPartyCombat() {
+        if (!this.partyCombat || !this.isInParty()) return false
+
+        // Check if same area
+        const p = this.game.player
+        if (this.partyCombat.worldX !== p.worldX || this.partyCombat.worldY !== p.worldY) {
+            this.game.log('Too far away to join combat!', 'info')
+            return false
+        }
+
+        this.partyCombat.participants.push({
+            oderId: this.game.userId,
+            name: p.name,
+            joinedCombat: true
+        })
+
+        this.channel?.send({
+            type: 'broadcast',
+            event: 'party-combat-action',
+            payload: {
+                oderId: this.game.userId,
+                name: p.name,
+                action: 'joined',
+                partyId: this.party.id
+            }
+        })
+
+        this.game.log(`You joined the fight against ${this.partyCombat.enemy.name}!`, 'combat')
+        return true
+    }
+
+    broadcastCombatAction(action, damage, enemyHp) {
+        if (!this.partyCombat || !this.isInParty()) return
+
+        this.channel?.send({
+            type: 'broadcast',
+            event: 'party-combat-action',
+            payload: {
+                oderId: this.game.userId,
+                name: this.game.player.name,
+                action,
+                damage,
+                enemyHp,
+                partyId: this.party.id
+            }
+        })
+    }
+
+    handlePartyCombatAction(payload) {
+        if (payload.action === 'joined') {
+            this.game.log(`${payload.name} joined the fight!`, 'reward')
+            if (this.partyCombat) {
+                this.partyCombat.participants.push({
+                    oderId: payload.oderId,
+                    name: payload.name,
+                    joinedCombat: true
+                })
+            }
+        } else if (payload.action === 'attack') {
+            this.game.log(`${payload.name} dealt ${payload.damage} damage!`, 'combat')
+            // Sync enemy HP
+            if (this.game.currentEnemy && this.partyCombat) {
+                this.game.currentEnemy.hp = payload.enemyHp
+                if (this.onCombatUpdate) this.onCombatUpdate()
+            }
+        } else if (payload.action === 'spell') {
+            this.game.log(`${payload.name} cast a spell for ${payload.damage} damage!`, 'combat')
+            if (this.game.currentEnemy && this.partyCombat) {
+                this.game.currentEnemy.hp = payload.enemyHp
+                if (this.onCombatUpdate) this.onCombatUpdate()
+            }
+        }
+        
+        // Check if enemy defeated by ally
+        if (this.game.currentEnemy && this.game.currentEnemy.hp <= 0 && this.game.inCombat) {
+            this.game.log(`${this.game.currentEnemy.name} defeated!`, 'reward')
+            this.game.endCombat(true)
+            this.partyCombat = null
+            if (this.onCombatUpdate) this.onCombatUpdate()
+        }
+    }
+
+    endPartyCombat(victory) {
+        if (!this.partyCombat || !this.isInParty()) return
+
+        this.channel?.send({
+            type: 'broadcast',
+            event: 'party-combat-end',
+            payload: {
+                oderId: this.game.userId,
+                name: this.game.player.name,
+                victory,
+                enemyName: this.partyCombat.enemy?.name,
+                partyId: this.party.id
+            }
+        })
+
+        this.partyCombat = null
+    }
+
+    handlePartyCombatEnd(payload) {
+        if (payload.victory) {
+            this.game.log(`${payload.enemyName} was defeated!`, 'reward')
+        } else {
+            this.game.log(`The party fled from ${payload.enemyName}`, 'info')
+        }
+        this.partyCombat = null
     }
 }

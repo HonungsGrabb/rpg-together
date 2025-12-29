@@ -166,6 +166,22 @@ export class Game {
         this.log(`⚔️ ${enemy.emoji} ${enemy.name} attacks!`, 'combat')
     }
 
+    startPartyCombatAsJoiner(enemy) {
+        this.inCombat = true
+        this.currentEnemy = { 
+            ...enemy, 
+            maxHp: enemy.maxHp || enemy.hp,
+            defense: enemy.defense || 5,
+            magicResist: enemy.magicResist || 5,
+            physicalDamage: enemy.physicalDamage || 10,
+            magicDamage: enemy.magicDamage || 0,
+            speed: enemy.speed || 5
+        }
+        this.enemyPosition = null
+        this.combatBuffs = []; this.combatDebuffs = []; this.enemyDot = null
+        this.log(`⚔️ You join the fight against ${enemy.emoji} ${enemy.name}!`, 'combat')
+    }
+
     calculatePhysicalDamage(rawDamage, targetDefense) { return Math.max(1, Math.floor(rawDamage - targetDefense * 0.5) + Math.floor(Math.random() * 5) - 2) }
     calculateMagicDamage(rawDamage, targetMagicResist) { return Math.max(1, Math.floor(rawDamage - targetMagicResist * 0.5) + Math.floor(Math.random() * 5) - 2) }
 

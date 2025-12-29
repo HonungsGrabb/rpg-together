@@ -119,6 +119,18 @@ function setupMultiplayerCallbacks() {
     game.multiplayer.onPartyInvite = (invites) => {
         renderPartyInvites(invites)
     }
+    game.multiplayer.onCombatInvite = (payload) => {
+        showPartyCombatInvite(payload)
+    }
+    game.multiplayer.onCombatUpdate = () => {
+        if (game.inCombat) {
+            updateCombatUI()
+            // Check if combat ended by ally
+            if (!game.currentEnemy || game.currentEnemy.hp <= 0) {
+                setTimeout(() => { hideModal('combat-modal'); renderMap(); updateGameUI() }, 800)
+            }
+        }
+    }
 }
 
 function updateOnlineCount() {
@@ -249,6 +261,35 @@ document.addEventListener('click', (e) => {
     if (menu && !menu.contains(e.target) && !e.target.classList.contains('tile-other-player')) {
         menu.classList.add('hidden')
     }
+})
+
+// ============================================
+// PARTY COMBAT
+// ============================================
+function showPartyCombatInvite(payload) {
+    const modal = document.getElementById('party-combat-modal')
+    if (!modal) return
+    
+    document.getElementById('combat-invite-text').textContent = 
+        `${payload.odererName} is fighting ${payload.enemy.name}! Join the battle?`
+    
+    showModal('party-combat-modal')
+}
+
+document.getElementById('btn-join-combat')?.addEventListener('click', () => {
+    hideModal('party-combat-modal')
+    
+    if (game.multiplayer.joinPartyCombat()) {
+        // Start combat with the shared enemy
+        const enemy = game.multiplayer.partyCombat.enemy
+        game.startPartyCombatAsJoiner(enemy)
+        showCombatUI()
+    }
+})
+
+document.getElementById('btn-skip-combat')?.addEventListener('click', () => {
+    hideModal('party-combat-modal')
+    game.multiplayer.partyCombat = null
 })
 
 // ============================================
@@ -406,6 +447,12 @@ function showCombatUI() {
     document.getElementById('combat-enemy-emoji').textContent = e.emoji
     document.getElementById('combat-enemy-name').textContent = e.name
     game.multiplayer.broadcastCombat('is fighting', e.name)
+    
+    // Start party combat if in party and we initiated
+    if (game.multiplayer.isInParty() && !game.multiplayer.partyCombat) {
+        game.multiplayer.startPartyCombat(e)
+    }
+    
     renderCombatSpells(); document.getElementById('combat-log-modal').innerHTML = ''
     updateCombatUI(); showModal('combat-modal')
 }
@@ -432,12 +479,24 @@ function renderCombatSpells() {
         const btn = document.createElement('button'); btn.className = 'spell-btn'
         btn.innerHTML = `${spell.emoji} ${spell.name} <small>(${spell.manaCost})</small>`
         btn.disabled = game.player.mana < spell.manaCost
-        btn.onclick = () => handleCombatResult(game.castSpell(spellId))
+        btn.onclick = () => {
+            const result = game.castSpell(spellId)
+            if (result && game.multiplayer.isInParty() && game.multiplayer.partyCombat) {
+                game.multiplayer.broadcastCombatAction('spell', result.playerDamage || 0, game.currentEnemy?.hp || 0)
+            }
+            handleCombatResult(result)
+        }
         container.appendChild(btn)
     }
 }
 
-document.getElementById('btn-attack')?.addEventListener('click', () => handleCombatResult(game.playerAttack()))
+document.getElementById('btn-attack')?.addEventListener('click', () => {
+    const result = game.playerAttack()
+    if (result && game.multiplayer.isInParty() && game.multiplayer.partyCombat) {
+        game.multiplayer.broadcastCombatAction('attack', result.playerDamage || 0, game.currentEnemy?.hp || 0)
+    }
+    handleCombatResult(result)
+})
 document.getElementById('btn-use-potion')?.addEventListener('click', () => {
     const potionIndex = game.player.inventory.findIndex(id => { const item = game.getItem(id); return item?.type === 'consumable' && (item?.effect?.heal || item?.effect?.restoreMana) })
     if (potionIndex >= 0) { game.useItem(potionIndex); updateCombatUI(); updateGameUI() }
@@ -445,7 +504,12 @@ document.getElementById('btn-use-potion')?.addEventListener('click', () => {
 })
 document.getElementById('btn-flee')?.addEventListener('click', () => {
     const escaped = game.flee(); updateCombatUI(); updateGameUI()
-    if (escaped) setTimeout(() => { hideModal('combat-modal'); renderMap() }, 500)
+    if (escaped) {
+        if (game.multiplayer.isInParty() && game.multiplayer.partyCombat) {
+            game.multiplayer.endPartyCombat(false)
+        }
+        setTimeout(() => { hideModal('combat-modal'); renderMap() }, 500)
+    }
     else if (game.player.hp <= 0) setTimeout(() => { hideModal('combat-modal'); showDeathScreen() }, 800)
 })
 
@@ -454,6 +518,9 @@ function handleCombatResult(result) {
     updateCombatUI(); updateGameUI(); renderCombatSpells()
     if (result.enemyDefeated) {
         game.multiplayer.broadcastCombat('defeated', game.currentEnemy?.name || 'an enemy')
+        if (game.multiplayer.isInParty() && game.multiplayer.partyCombat) {
+            game.multiplayer.endPartyCombat(true)
+        }
         setTimeout(() => { hideModal('combat-modal'); renderMap() }, 800)
     }
     else if (result.playerDefeated) setTimeout(() => { hideModal('combat-modal'); showDeathScreen() }, 800)
