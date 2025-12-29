@@ -180,6 +180,8 @@ export class Game {
 
     startCombat(enemies, x, y, isJoining = false, combatId = null, existingEnemies = null) {
         this.inCombat = true
+        this.isPartyCombat = false  // Default to false, will be set true if needed
+        this.partyCombatId = null
         
         // If joining existing combat, use provided enemies
         if (isJoining && existingEnemies) {

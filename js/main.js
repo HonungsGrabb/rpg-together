@@ -588,8 +588,7 @@ function showItemDetail(item, equipSlot = null, invIndex = null) {
 
 // Combat
 function showCombatUI() {
-    const p = game.player
-    document.getElementById('combat-player-name').textContent = p.name
+    renderPlayers()
     renderEnemies()
     renderCombatSpells()
     document.getElementById('combat-log-modal').innerHTML = ''
